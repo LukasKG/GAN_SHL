@@ -43,7 +43,7 @@ def get_Data(P):
         return [[X,Y], [X,Y], [X,Y]]
 
 def hyperopt_C(eval_step=25,max_evals=None):
-    
+    import network
     epochs = 100
     
     P = Params(
@@ -86,18 +86,7 @@ def hyperopt_C(eval_step=25,max_evals=None):
         'C_optim'         : hp.choice('C_optim',['Adam','AdamW','SGD']),
     }
 
-    import torch.nn as nn
-    import torch.nn.functional as F
-    import network
-    activation_functions = {
-        "relu" : nn.ReLU(inplace=False),
-        "leaky" : nn.LeakyReLU(0.01, inplace=False),
-        "leaky20" : nn.LeakyReLU(0.2, inplace=False),
-        'sig': nn.Sigmoid(),
-        'tanh': nn.Tanh(),
-        'soft': nn.Softmax(dim=1),
-    }
-    
+
     DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, get_Data(P)) 
     input_size, output_size = P.get_IO_shape()
     
@@ -157,7 +146,7 @@ def pytorch_baseline(P):
     import network
     
     P.set('CUDA',False)
-    
+    P.set('C_aco_func','gumbel')
    
     DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, get_Data(P)) 
     
@@ -268,7 +257,7 @@ def hyperopt_Search(P,param_space,eval_step=25,max_evals=None):
 def get_Results(P):
     log("Params: "+str(P),name=P.get('log_name'))
     
-    if torch.cuda.is_available():
+    if P.get('CUDA') and torch.cuda.is_available():
         log("CUDA Training.",name=P.get('log_name'))
     else:
         log("CPU Training.",name=P.get('log_name'))
@@ -293,6 +282,9 @@ def get_Results(P):
         else:
             ACC = np.concatenate((ACC, np.expand_dims(mat_accuracy,axis=2)),axis=2)
         
+        C.mode_eval()
+        if P.get('R_active'):
+            R.mode_eval()
         for XV, YV in DL_V:
             
             # Classify Validation data
@@ -408,6 +400,7 @@ def main():
         'D_optim'         : hp.choice('D_optim',['AdamW','SGD']),
         
         'C_ac_func'       : hp.choice('C_ac_func',['relu','leaky','leaky20','sig']),
+        'C_aco_func'      : hp.choice('C_ac_func',['gumbel','hardmax','softmax']),
         'C_hidden'        : scope.int(hp.qloguniform('C_hidden', np.log(16), np.log(1024), q=1)),  
         'C_optim'         : hp.choice('C_optim',['AdamW','SGD']),
         'C_tau'           : hp.loguniform('C_tau', np.log(0.01), np.log(10.)),
@@ -475,7 +468,7 @@ def main():
         name = 'Eval_Users',
         dataset = 'SHL',
         print_epoch = False,
-        epochs = 50,
+        epochs = 500,
         save_step = 10,
         runs = 5,
         
@@ -498,7 +491,7 @@ def main():
         C_aco_func = 'gumbel', 
         C_hidden = 120, 
         C_optim = 'AdamW', 
-        C_tau = 0.01124025837289306,  
+        C_tau = 1.0,  
         
         DB1 = 0.008572805104490166, 
         DLR = 0.02167128484058551, 
@@ -518,8 +511,8 @@ def main():
     #hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
     #evaluate(P_test)
     
+    evaluate(P)
     hyperopt_Search(P_search,param_space)
-    #evaluate(P)
     
     #sklearn_baseline(P)
     #pytorch_baseline(P)

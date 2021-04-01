@@ -15,13 +15,25 @@ else:
     from .log import log
     from .params import M_PATH, make_dir_mod
 
+def hardmax(logits):
+    y = F.softmax(logits, dim=-1)
+    shape = y.size()
+    _, ind = y.max(dim=-1)
+    y_hard = torch.zeros_like(y).view(-1, shape[-1])
+    y_hard.scatter_(1, ind.view(-1, 1), 1)
+    y_hard = y_hard.view(*shape)
+    # Set gradients w.r.t. y_hard gradients w.r.t. y
+    y_hard = (y_hard - y).detach() + y
+    return y_hard
+
 activation_functions = {
     "relu" : nn.ReLU(inplace=False),
     "leaky" : nn.LeakyReLU(0.01, inplace=False),
     "leaky20" : nn.LeakyReLU(0.2, inplace=False),
     'sig': nn.Sigmoid(),
     'tanh': nn.Tanh(),
-    'soft': nn.Softmax(dim=1),
+    'softmax': nn.Softmax(dim=1),
+    'hardmax': hardmax,
     }
 
 # -------------------
@@ -89,7 +101,7 @@ class Classifier_01(nn.Module):
         self.fc3 = nn.Linear(hidden_size, num_classes)
         
         self.train = train
-        self.soft = activation_functions['soft']
+        self.soft = activation_functions['softmax']
     
     def mode_train(self): self.train = True
     def mode_eval(self): self.train = False
@@ -212,12 +224,15 @@ def save_GAN(name,G,D,C,R=None,num=None):
     if R is not None:
         save_Ref(name,R,num)
     
-def activate_CUDA(model):
+def activate_CUDA(*args):
     if torch.cuda.is_available():
         device = torch.device('cuda')
     else:
         device = torch.device('cpu')
-    return model.to(device)    
+    if len(args)>1:
+        return [model.to(device) for model in args]
+    else:
+        return args[0].to(device)
     
 def load_Model(P,name):
     PATH = M_PATH+name+'.pt'
@@ -232,7 +247,7 @@ def load_Model(P,name):
     
     log("Loaded model %s."%name,name=P.get('log_name'))
     
-    return activate_CUDA(model) 
+    return model
     
 def load_Pretrain_C(P):
     PATH = 'pretrain/'+P.get('pretrain')
@@ -251,8 +266,10 @@ def load_Pretrain_C(P):
         return None
     
     model.eval()
-    
-    return activate_CUDA(model)
+    if P.get('CUDA'):
+        return activate_CUDA(model)
+    else:
+        return model
 
 def load_Ref(P,name=None):
     input_size, output_size = P.get_IO_shape()
@@ -264,7 +281,10 @@ def load_Ref(P,name=None):
     if R is None:
         R = new_C(P, input_size=input_size, hidden_size=P.get('C_hidden'), num_classes=output_size)
         
-    return R 
+    if P.get('CUDA'):
+        return activate_CUDA(R)
+    else:
+        return R
     
 def load_GAN(P,name=None):
     input_size, output_size = P.get_IO_shape()
@@ -289,7 +309,7 @@ def load_GAN(P,name=None):
         C = new_C(P, input_size=input_size, hidden_size=P.get('C_hidden'), num_classes=output_size)
        
     if P.get('CUDA'):
-        return activate_CUDA(G), activate_CUDA(D), activate_CUDA(C)
+        return activate_CUDA(G, D, C)
     else:
         return G, D, C
 

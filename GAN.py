@@ -237,6 +237,10 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             acc_D_vs_G = []
             acc_C_real = []
             
+            C.mode_eval()
+            if P.get('R_active'):
+                R.mode_eval()
+                
             for data in DL_V:
                 
                 XV, YV = data
@@ -270,7 +274,11 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
                 acc_D_vs_G.append(get_accuracy(AV3,FV3))
             
                 acc_C_real.append(get_accuracy(PV, YV))
- 
+                
+            C.mode_train()
+            if P.get('R_active'):
+                R.mode_train()
+                
             acc_D_real = np.mean(acc_D_real)
             acc_D_vs_C = np.mean(acc_D_vs_C)
             acc_D_vs_G = np.mean(acc_D_vs_G)
