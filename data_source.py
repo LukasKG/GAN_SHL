@@ -39,15 +39,21 @@ LABELS_SHL = {
 SAVE_DATA = ['SHL','Short']
 
 PATHS = {
-    'SHL': 'D:\\data\\SHL_Dataset_preview_v1\\',
+    'SHL': '\\SHL_Dataset_preview_v1\\',
     'Short': None,
     'Test': None,
     'Sincos': None,
-    'Hash': 'D:\\data\\SHL_processed\\',
+    'Hash': '\\SHL_processed\\',
         }
 
+def get_path(P,dataset=None):
+    ''' Returns the path to the dataset '''
+    if dataset is None:
+        dataset = P.get('dataset')
+    return P.get('data_path')+PATHS[dataset]
+
 def get_labels():
-    """ Returns list with unique labels """
+    ''' Returns list with unique labels '''
     return np.fromiter(LABELS_SHL.keys(), dtype=int)
 
 def remove_nan(data,label):
@@ -61,12 +67,12 @@ def remove_zero(data,label):
     return data.drop(idx).reset_index(drop=True), label.drop(idx).reset_index(drop=True)
 
 def reduce_labels(data,label,label_remain):
-    ''' '''
+    ''' Remove all but the selected labels '''
     idx = label['Coarse'].isin(label_remain)
     return data[idx].reset_index(drop=True), label[idx].reset_index(drop=True)
 
 def read_day(P,uid='User1',recid='220617'):
-    path = PATHS[P.get('dataset')] + uid + '/' + recid + '/'
+    path = get_path(P) + uid + '/' + recid + '/'
     
     X = pd.read_csv(path+P.get('location')+'_Motion.txt',sep=' ',names=NAMES_X)
     Y = pd.read_csv(path+'Label.txt',sep=' ',names=NAMES_Y)
@@ -198,13 +204,11 @@ def read_data(P):
             V.append([pd.DataFrame(X),pd.DataFrame(Y)])
     return V
 
-def hash_exists(hash_val):
-    path = PATHS['Hash'] + hash_val + '/'
+def hash_exists(path):
     return os.path.isdir(path)
 
-def load_processed(hash_val):
-    assert hash_exists(hash_val)
-    path = PATHS['Hash'] + hash_val + '/'
+def load_processed(path):
+    assert hash_exists(path)
     
     F = []
     for i in range(3):
@@ -214,10 +218,9 @@ def load_processed(hash_val):
     
     return F
         
-def save_processed(P,F):
-    hash_val = P.get_dataset_hash_str()
-    assert not hash_exists(hash_val)
-    path = PATHS['Hash'] + hash_val + '/'
+def save_processed(F,path):
+    assert not hash_exists(path)
+
     os.makedirs(path, exist_ok=True)
     
     for i,(X,Y) in enumerate(F):
@@ -268,8 +271,9 @@ def load_data(P):
     
     if P.get('dataset') in SAVE_DATA:
         dataset_hash = P.get_dataset_hash_str()
-        if hash_exists(dataset_hash):
-            F = load_processed(dataset_hash)
+        hash_path = get_path(P,dataset='Hash') + dataset_hash + '/'
+        if hash_exists(hash_path):
+            F = load_processed(hash_path)
             log("Loaded processed data (%s)."%dataset_hash,name=P.get('log_name'))
             return F
 
@@ -280,7 +284,7 @@ def load_data(P):
     log("Processed data.",name=P.get('log_name'))
     
     if P.get('dataset') in SAVE_DATA:
-        save_processed(P,F)
+        save_processed(F,hash_path)
         log("Saved processed data (%s)."%dataset_hash,name=P.get('log_name'))
         
     return F
@@ -292,17 +296,19 @@ if __name__ == "__main__":
     dataset = 'SHL'
     #dataset = 'Short'
     
+    FX_sel = 'basic'
+    #FX_sel = 'all'
+    
     labels = None
     #labels = [1,2,3]
     
-    P = Params(dataset=dataset,labels=labels)
+    P = Params(dataset=dataset,labels=labels,FX_sel=FX_sel)
     
     F = load_data(P)
-    print("X")
-    print(F[1][0].shape)
-    print(F[1][0][-1])
-    print("Y")
-    print(F[1][1].shape)
-    print(F[1][1][-1])
     
-    print(np.unique(F[0][1]))
+    for i,(X,Y) in enumerate(F):
+        print("#--------------#")
+        print("User",i+1)
+        print("Windows:",X.shape)
+        print("Labels:",{int(k):v for k,v in zip(*np.unique(Y, return_counts=True))})
+        

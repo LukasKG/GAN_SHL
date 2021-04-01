@@ -10,11 +10,13 @@ P_PATH = 'pic/'
 M_PATH = 'models/'
 S_PATH = 'prediction/'
 T_PATH = 'tree/'
+H_PATH = 'hyper/'
 
 def make_dir_pic():os.makedirs(P_PATH, exist_ok=True)
 def make_dir_mod():os.makedirs(M_PATH, exist_ok=True)
 def make_dir_pre():os.makedirs(S_PATH, exist_ok=True)
 def make_dir_tre():os.makedirs(T_PATH, exist_ok=True)
+def make_dir_hyp():os.makedirs(H_PATH, exist_ok=True)
 
 # -------------------
 #  Images
@@ -57,6 +59,27 @@ def save_tree(P,name,tree):
         fout.write(text_representation)
 
 # -------------------
+#  Hyperopt Trials
+# -------------------
+
+def save_trials(P,trials,name=None):
+    make_dir_hyp()
+    if name is None:
+        name = P.get('name')
+    PATH = H_PATH+name+'.p'
+    pickle.dump(trials, open(PATH, "wb"))
+    
+def load_trials(P,name=None):
+    if name is None:
+        name = P.get('name')
+    PATH = H_PATH+name+'.p'
+    
+    if not os.path.isfile(PATH):
+        return None
+    
+    return pickle.load(open(PATH, "rb"))
+     
+# -------------------
 #  Parameters
 # -------------------
 
@@ -67,10 +90,12 @@ import pickle
 if __package__ is None or __package__ == '':
     # uses current directory visibility
     import data_source as ds
+    from log import log as writeLog
     from sliding_window import get_FX_list
 else:
     # uses current package visibility
     from . import data_source as ds
+    from .log import log as writeLog
     from .sliding_window import get_FX_list
 
 DEFAULT_PARAMS = {
@@ -78,10 +103,17 @@ DEFAULT_PARAMS = {
         'log_name'        : 'log',                      # Name of the logfile
         'dummy_size'      : 100000,                     # Length of the dummy signal (only for dataset 'Short')
         'noise'           : 0.0,                        # Standard deviation of gaussian noise added to the signals
+        'data_path'       : 'D:\\data',                 # Path to the datasets
+        'CUDA'            : True,                       # True: utilises CUDA if available
         
         'dataset'         : "SHL",                      # Name of the dataset to be used
         'location'        : 'Hips',                     # Body location of the sensor (Hand,Hips,Bag,Torso)
         'labels'          : None,                       # Class labels
+        
+        'Cross_val'       : 'user',                     # Crossvalidation mode, 'user' = as set in the individual users, 'user_x': days for user x seperatly, 'none': all data together
+        'User_L'          : 1,                          # User for the Labelled data
+        'User_U'          : 2,                          # User for the Unlabelled data
+        'User_V'          : 3,                          # User for the Validation data
         
         'channels'        : 'acc',                      # Sensor channels to be selected
         'magnitude'       : True,                       # True: Calculates the magnitude of acceleration
@@ -95,9 +127,12 @@ DEFAULT_PARAMS = {
         'pretrain'        : None,                       # If given: Name of the pretrained model to be loaded.
         'runs'            : 10,                         # Number of runs
         
+        'sample_no'       : None,                       # Not None: number of samples to reduce/increase all classes to
+        'undersampling'   : False,                      # True: undersample all majority classes
+        'oversampling'    : True,                       # True: oversample all minority classes  
+        
         'epochs'          : 500,                        # Number of training epochs
         'save_step'       : 10,                         # Number of epochs after which results are stored
-        'oversampling'    : True,                       # True: oversample all minority classes
         'batch_size'      : 128,                        # Number of samples per batch
         'noise_shape'     : 100,                        # Size of random noise Z
 
@@ -110,27 +145,30 @@ DEFAULT_PARAMS = {
         'C_basic_train'   : True,                       # True: The classifier is trained on real data | False: the classifier is only trained against the discriminator
         'R_active'        : True,                       # True: a reference classifier is used as baseline
         
-        'GLR'             : 0.0005,                     # Generator learning rate
-        'GB1'             : 0.5,                        # Generator decay rate for first moment estimates
-        'GB2'             : 0.999,                      # Generator decay rate for second-moment estimates
-        'DLR'             : 0.0125,                     # Discriminator learning rate
-        'DB1'             : 0.75,                       # Discriminator decay rate for first moment estimates
-        'DB2'             : 0.999,                      # Discriminator decay rate for second-moment estimates
         'CLR'             : 0.003,                      # Classifier learning rate
         'CB1'             : 0.9,                        # Classifier decay rate for first moment estimates
         'CB2'             : 0.999,                      # Classifier decay rate for second-moment estimates
+        'C_hidden'        : 256,                        # Classifier: Number of nodes in the hidden layers
+        'C_ac_func'       : 'relu',                     # Classifier: Type of activation function for the hidden layers
+        'C_aco_func'      : 'gumbel',                   # Classifier: Type of activation function for the output layer
+        'C_tau'           : 1,                          # Classifier: Temperature of gumbel softmax
+        'C_optim'         : 'AdamW',                    # Classifier: Optimiser
+        
+        'DLR'             : 0.0125,                     # Discriminator learning rate
+        'DB1'             : 0.75,                       # Discriminator decay rate for first moment estimates
+        'DB2'             : 0.999,                      # Discriminator decay rate for second-moment estimates
+        'D_hidden'        : 128,                        # Discriminator: Number of nodes in the hidden layers
+        'D_ac_func'       : 'leaky',                    # Discriminator: Type of activation function for the hidden layers
+        'D_aco_func'      : 'sig',                      # Discriminator: Type of activation function for the output layer
+        'D_optim'         : 'AdamW',                    # Classifier: Optimiser
         
         'G_hidden'        : 128,                        # Generator: Number of nodes in the hidden layers
         'G_ac_func'       : 'leaky',                    # Generator: Type of activation function for the hidden layers
         'G_aco_func'      : 'tanh',                     # Generator: Type of activation function for the output layer
-        
-        'D_hidden'        : 128,                        # Discriminator: Number of nodes in the hidden layers
-        'D_ac_func'       : 'leaky',                    # Discriminator: Type of activation function for the hidden layers
-        'D_aco_func'      : 'sig',                      # Discriminator: Type of activation function for the output layer
-        
-        'C_hidden'        : 256,                        # Classifier: Number of nodes in the hidden layers
-        'C_ac_func'       : 'relu',                     # Classifier: Type of activation function for the hidden layers
-        'C_aco_func'      : 'gumbel',                   # Classifier: Type of activation function for the output layer   
+        'GLR'             : 0.0005,                     # Generator learning rate
+        'GB1'             : 0.5,                        # Generator decay rate for first moment estimates
+        'GB2'             : 0.999,                      # Generator decay rate for second-moment estimates     
+        'G_optim'         : 'AdamW',                    # Classifier: Optimiser
         }
 
 class Params:
@@ -169,7 +207,7 @@ class Params:
 
     def get_channel_list(self):
         self.update_channels()
-        param_lst = self.params.get('channels')
+        param_lst = copy.deepcopy(self.params.get('channels'))
         if self.params.get('magnitude') and 'Magnitude' not in param_lst:
             param_lst.append('Magnitude')
             for chl in ds.ACC_CHANNELS[::-1]:
@@ -184,14 +222,21 @@ class Params:
         return [X,Y]  
 
     def get_dataset_hash(self):
-        keys = ['dataset','location','channels','labels','noise','magnitude','winsize','jumpsize','FX_sel','padding']
+        keys = ['dataset','location','labels','noise','magnitude','winsize','jumpsize','padding']
         
         value = ''.join([str(self.get(key)) for key in keys])
+        value += str(self.get_channel_list())
+        value += str(get_FX_list(self))
 
         return hashlib.blake2s(value.encode('utf-8')).hexdigest()
 
     def get_dataset_hash_str(self):
         return str(self.get_dataset_hash())
+
+    def log(self,txt,save=True,error=False,name=None):
+        if name is None:
+            name = self.get('log_name')
+        writeLog(txt,save=save,error=error,name=name)
 
     def save(self):
         make_dir_mod()

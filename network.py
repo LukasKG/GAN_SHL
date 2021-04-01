@@ -21,8 +21,8 @@ activation_functions = {
     "leaky20" : nn.LeakyReLU(0.2, inplace=False),
     'sig': nn.Sigmoid(),
     'tanh': nn.Tanh(),
+    'soft': nn.Softmax(dim=1),
     }
-
 
 # -------------------
 #  Generator
@@ -76,13 +76,23 @@ class Discriminator_01(nn.Module):
 
 class Classifier_01(nn.Module):
     ''' Gumbel Softmax (Discrete output is default) '''
-    def __init__(self, input_size, hidden_size, num_classes, hard=True, ac_func='relu'):
+    def __init__(self, input_size, hidden_size, num_classes, ac_func='relu', aco_func='gumbel', hard=True, tau=1, train=True):
         super(Classifier_01, self).__init__()
         self.ac = activation_functions[ac_func]
+        if aco_func == 'gumbel':
+            def gumbel(logits): return F.gumbel_softmax(logits, tau=tau, hard=hard, eps=1e-10, dim=1)
+            self.aco = gumbel
+        else:
+            self.aco = activation_functions[aco_func]
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
         self.fc3 = nn.Linear(hidden_size, num_classes)
-        self.hard = hard
+        
+        self.train = train
+        self.soft = activation_functions['soft']
+    
+    def mode_train(self): self.train = True
+    def mode_eval(self): self.train = False
         
     def forward(self, x):
         out = self.fc1(x)
@@ -90,21 +100,20 @@ class Classifier_01(nn.Module):
         out = self.fc2(out)
         out = self.ac(out)
         out = self.fc3(out)
-        out = F.gumbel_softmax(out, tau=1, hard=self.hard, eps=1e-10, dim=1)
+        if self.train:
+            out = self.aco(out)
+        else:
+            out = self.soft(out)
         return out
-
 
 # -------------------
 #  Support Functions
 # -------------------
 
 def weights_init_normal(m):
-    classname = m.__class__.__name__
-    if classname.find("Conv") != -1:
-        nn.init.normal_(m.weight.data, 0.0, 0.02)
-    elif classname.find("BatchNorm2d") != -1:
-        nn.init.normal_(m.weight.data, 1.0, 0.02)
-        nn.init.constant_(m.bias.data, 0.0)
+    if type(m) == nn.Linear:
+        nn.init.xavier_uniform_(m.weight)
+        m.bias.data.fill_(0.01)
 
 def new_G(P,input_size,hidden_size,output_size):
     if P.get('G_no') == 1:
@@ -118,9 +127,10 @@ def new_G(P,input_size,hidden_size,output_size):
         return None
     
     G.apply(weights_init_normal)
-    log("Created new generator.",name=P.get('log_name'))
+    if P.get('print_epoch'):
+        log("Created new generator.",name=P.get('log_name'))
     # save_Model(get_string_name(P.get('name'),run,'G'),G)
-    return activate_CUDA(G)
+    return G
 
 def new_D(P,input_size,hidden_size):
     if P.get('D_no') == 1:
@@ -134,13 +144,14 @@ def new_D(P,input_size,hidden_size):
         return None
     
     D.apply(weights_init_normal)
-    log("Created new discriminator.",name=P.get('log_name'))
+    if P.get('print_epoch'):
+        log("Created new discriminator.",name=P.get('log_name'))
     # save_Model(get_string_name(P.get('name'),run,'D'),D)
-    return activate_CUDA(D)
+    return D
 
 def new_C(P,input_size,hidden_size,num_classes):
     if P.get('C_no') == 1:
-        C = Classifier_01(input_size, hidden_size, num_classes, ac_func=P.get('C_ac_func'))
+        C = Classifier_01(input_size, hidden_size, num_classes, ac_func=P.get('C_ac_func'), aco_func=P.get('C_aco_func'), hard=True, tau=P.get('C_tau'), train=True)
     # elif P.get('C_no') == 2:
     #     C = Classifier_02(input_size, hidden_size, num_classes)
     # elif P.get('C_no') == 3:
@@ -150,18 +161,34 @@ def new_C(P,input_size,hidden_size,num_classes):
         return None
     
     C.apply(weights_init_normal)
-    log("Created new classifier.",name=P.get('log_name'))
+    if P.get('print_epoch'):
+        log("Created new classifier.",name=P.get('log_name'))
     # save_Model(get_string_name(P.get('name'),run,'C'),C)
-    return activate_CUDA(C)
+    return C
+
+# -------------------
+#  Optimiser
+# -------------------
+
+def get_optimiser(P,model,params):
+    assert model in ['G','D','C']
+    optim = P.get(model+'_optim')
+    assert optim in ['Adam','AdamW','SGD']
+    
+    if optim == 'Adam':
+        return torch.optim.Adam(params, lr=P.get(model+'LR'), betas=(P.get(model+'B1'), P.get(model+'B2')))
+    elif optim == 'AdamW':
+        return torch.optim.AdamW(params, lr=P.get(model+'LR'), betas=(P.get(model+'B1'), P.get(model+'B2')))
+    elif optim == 'SGD':
+        return torch.optim.SGD(params, lr=P.get(model+'LR'), momentum=P.get(model+'B1'))
 
 # -------------------
 #  Save/Load Networks
 # -------------------
 
 def get_string_name(name,model,num=None):
-    if model not in ['G','D','C','R']:
-        log("Invalid model type \"%s\""%model,error=True)
-        return None
+    assert model in ['G','D','C','R']
+
     if num is None:
         return '%s_%s'%(name,model)
     else:
@@ -196,7 +223,8 @@ def load_Model(P,name):
     PATH = M_PATH+name+'.pt'
     
     if not os.path.isfile(PATH):
-        log("Model \"%s\" does not exist."%PATH,error=False,name=P.get('log_name'))
+        if P.get('print_epoch'):
+            log("Model \"%s\" does not exist."%PATH,error=False,name=P.get('log_name'))
         return None
     
     model = torch.load(PATH)
@@ -259,8 +287,11 @@ def load_GAN(P,name=None):
         C = load_Pretrain_C(P)
     if C is None:
         C = new_C(P, input_size=input_size, hidden_size=P.get('C_hidden'), num_classes=output_size)
-        
-    return G, D, C
+       
+    if P.get('CUDA'):
+        return activate_CUDA(G), activate_CUDA(D), activate_CUDA(C)
+    else:
+        return G, D, C
 
 # -------------------
 #  Clear

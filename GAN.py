@@ -11,22 +11,13 @@ else:
     from . import network
     from .log import log
     from . import preprocessing as pp
-    
-
-def get_accuracy(prediction,label):
-    C, P = pp.get_tensor(prediction,label)
-    _, idx_C = C.max(1)
-    _, idx_P = P.max(1)
-    
-    cases = list(label.size())[0]
-    correct = list(torch.where(idx_C==idx_P)[0].size())[0]
-    return correct/cases
    
-def get_accuracy_binary(prediction,label):
-    cases = list(label.size())[0]
-    correct = list(torch.where(prediction.round()==label)[0].size())[0]
-    return correct/cases
     
+def get_accuracy(Y_pred,Y_true):
+    if Y_true.size()[1] == 1:
+        return (Y_pred.round() == Y_true).sum().item() / Y_true.size(0)
+    else:
+        return (Y_pred.max(dim=1)[1] == Y_true.max(dim=1)[1]).sum().item() / Y_true.size(0)
     
 def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
     
@@ -39,21 +30,21 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
         name = P.get('name')
     plt.close('all')
     
-    # -------------------
+    # -------------------s
     #  CUDA
     # -------------------
     
-    G_Loss = torch.nn.BCELoss()
+    G_Loss = torch.nn.BCELoss() # might try logitsloss
     D_Loss = torch.nn.BCELoss()
     C_Loss = torch.nn.BCELoss()
 
-    if torch.cuda.is_available():
+    if P.get('CUDA') and torch.cuda.is_available():
         G_Loss.cuda()
         D_Loss.cuda()
         C_Loss.cuda()
         floatTensor = torch.cuda.FloatTensor
         #log("CUDA Training.",name=P.get('log_name'))
-        network.clear_cache()
+        #network.clear_cache()
     else:
         floatTensor = torch.FloatTensor
         #log("CPU Training.",name=P.get('log_name'))
@@ -78,12 +69,12 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
     #  Optimizers
     # -------------------
     
-    optimizer_G = torch.optim.Adam(G.parameters(), lr=P.get('GLR'), betas=(P.get('GB1'), P.get('GB2')))
-    optimizer_D = torch.optim.Adam(D.parameters(), lr=P.get('DLR'), betas=(P.get('DB1'), P.get('DB2')))
-    optimizer_C = torch.optim.Adam(C.parameters(), lr=P.get('CLR'), betas=(P.get('CB1'), P.get('CB2')))
+    optimizer_G = network.get_optimiser(P,'G',G.parameters())
+    optimizer_D = network.get_optimiser(P,'D',D.parameters())
+    optimizer_C = network.get_optimiser(P,'C',C.parameters())
     
     if(P.get('R_active')):
-        optimizer_R = torch.optim.Adam(R.parameters(), lr=P.get('CLR'), betas=(P.get('CB1'), P.get('CB2')))
+        optimizer_R = network.get_optimiser(P,'C',R.parameters())
     
     # -------------------
     #  Training
@@ -95,7 +86,6 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
         running_loss_D = 0.0
         running_loss_C = 0.0
         
-      
         """
               X1, P1      - Labelled Data,      predicted Labels (C)                             | Regular training of classifier
         W1 = (X1, Y1), A1 - Labelled Data,      actual Labels,        predicted Authenticity (D) | Real samples
@@ -180,7 +170,7 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             W4 = torch.cat((X4,Y4),dim=1)
             
             optimizer_D.zero_grad()
-            A4 = D(W4)
+            A4 = D(W4.detach())
             R4 = floatTensor(W4.shape[0], 1).fill_(1.0)
             loss = D_Loss(A4, R4)
             loss_D.append(loss)
@@ -275,9 +265,9 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
                 AV2 = D(WV2)
                 AV3 = D(WV3)
                 
-                acc_D_real.append(get_accuracy_binary(AV1,RV1))
-                acc_D_vs_C.append(get_accuracy_binary(AV2,FV2))
-                acc_D_vs_G.append(get_accuracy_binary(AV3,FV3))
+                acc_D_real.append(get_accuracy(AV1,RV1))
+                acc_D_vs_C.append(get_accuracy(AV2,FV2))
+                acc_D_vs_G.append(get_accuracy(AV3,FV3))
             
                 acc_C_real.append(get_accuracy(PV, YV))
  

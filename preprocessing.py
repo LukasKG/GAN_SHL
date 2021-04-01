@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from imblearn.over_sampling import SMOTE
+from imblearn.under_sampling import NearMiss
 import numpy as np
 from sklearn import preprocessing
 import torch
@@ -12,8 +13,7 @@ import torch
 def scale_minmax(X):
     ''' Scale data between -1 and 1 to fit the Generators tanh output '''
     scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1), copy=True)
-    scaler.fit(X)
-    return scaler.transform(X)
+    return scaler.fit_transform(X)
 
 def select_random(X0,Y0=None,ratio=1.0):
     ''' Select random samples based on a given target ratio '''
@@ -25,9 +25,21 @@ def select_random(X0,Y0=None,ratio=1.0):
         Y1 = Y0[idx]
     return X1, Y1
     
-def over_sampling(P,X,Y):
-    smote = SMOTE(sampling_strategy='not majority',k_neighbors=5)
-    data, labels = smote.fit_resample(X, Y.ravel())
+def over_sampling(P,X,Y,ss='not majority'):
+    Y = Y.ravel()
+    if isinstance(ss,dict):
+        ss = ss.copy()
+        for y, c in zip(*np.unique(Y,return_counts=True)):
+            ss[y] = max(ss[y],c)
+    sampler = SMOTE(sampling_strategy=ss,k_neighbors=5)
+    data, labels = sampler.fit_resample(X, Y)
+    return data, labels
+
+def under_sampling(P,X,Y,ss='not minority'):
+    Y = Y.ravel()
+    sampler = NearMiss(sampling_strategy=ss)
+    data, labels = sampler.fit_resample(X, Y)
+
     return data, labels
 
 def get_one_hot_labels(P,num):
@@ -49,8 +61,8 @@ def one_hot_to_labels(P,Y):
         Y = Y.detach().cpu().numpy()
     return np.array([P.get('labels')[np.where(oh==max(oh))[0][0]] for oh in Y])
 
-def get_tensor(*args):
-    if torch.cuda.is_available():
+def get_tensor(*args,cuda=True):
+    if cuda and torch.cuda.is_available():
         device = torch.device('cuda')
     else:
         device = torch.device('cpu')
@@ -82,9 +94,9 @@ class Permanent_Dataloader:
 def get_dataloader(P,X,Y=None,batch_size=None):
     # create your datset
     if Y is not None:
-        dataset = torch.utils.data.TensorDataset(*get_tensor(X,Y))
+        dataset = torch.utils.data.TensorDataset(*get_tensor(X,Y,cuda=P.get('CUDA')))
     else:
-        dataset = torch.utils.data.TensorDataset(*get_tensor(X))
+        dataset = torch.utils.data.TensorDataset(*get_tensor(X,cuda=P.get('CUDA')))
     
     if batch_size == None:
         batch_size = P.get('batch_size')
@@ -94,6 +106,8 @@ def get_dataloader(P,X,Y=None,batch_size=None):
         dataset,
         batch_size=batch_size,
         shuffle=True,
+        #num_workers=4,
+        #pin_memory=True,
     )
     
     return dataloader
@@ -103,11 +117,55 @@ def get_perm_dataloader(P,X,Y=None,batch_size=None):
     perm_dataloader = Permanent_Dataloader(dataloader)
     return perm_dataloader
 
+def get_all_dataloader(P, datasets, sample_no=-1):
+    if sample_no == -1:
+        sample_no = P.get('sample_no')
+    assert sample_no is None or isinstance(sample_no,int) or isinstance(sample_no,tuple) and len(sample_no)==len(datasets)
+    
+    
+    ''' Scale data between -1 and 1 to fit the Generators tanh output '''
+    scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1), copy=True)
+    scaler.fit(np.concatenate([X for X, _ in datasets]))
+    
+    F = []
+    for i,(X,Y) in enumerate(datasets):
+
+        X = scaler.transform(X)
+
+        if sample_no is not None:
+            if isinstance(sample_no,tuple): no = sample_no[i]
+            else: no = sample_no
+            samples = {k:no for k in P.get('labels')}
+            X,Y = over_sampling(P, X, Y, samples)
+            X,Y = under_sampling(P, X, Y)
+            
+        elif P.get('undersampling'):
+            X, Y = under_sampling(P, X, Y)
+            
+        elif P.get('oversampling'):
+            X, Y = over_sampling(P, X, Y)
+            
+        F.append([X,Y])
+     
+    DL_L = get_dataloader(P, F[0][0], labels_to_one_hot(P,F[0][1]))
+    DL_U_iter = get_perm_dataloader(P, F[1][0], labels_to_one_hot(P,F[1][1]))
+    DL_V = get_dataloader(P, F[2][0], labels_to_one_hot(P,F[2][1]), batch_size=1024) 
+    
+    return DL_L, DL_U_iter, DL_V
+
 if __name__ == "__main__":
     from params import Params
-    P = Params(labels=[2,3,5])
-    labels = np.array([2,2,3,5,2,3])
-    Y = labels_to_one_hot(P,labels)
-    print(labels)
-    print(Y)
-    print(one_hot_to_labels(P,Y))
+    P = Params(
+        labels=[2,5],
+        
+        sample_no = 8,
+        undersampling = True,
+        oversampling = True,
+        )
+
+    
+    X = np.array([[0,5,10,0,5,10,0,5,10,0,5,10,0,5,10,0,5,10],[0,1,2,0,1,2,0,1,2,0,1,2,0,1,2,0,1,2]]).T
+    Y = np.array([2,2,5,2,2,5,2,2,5,2,2,5,2,2,5,2,2,5])
+    
+    get_all_dataloader(P, [[X,Y],[X,Y],[X,Y]])
+    

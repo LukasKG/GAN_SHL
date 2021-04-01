@@ -39,8 +39,8 @@ FXdict = {
 }
 
 FEATURES = {
-    'basic': ['mean','std','mcr','kurtosis','skew'],
-    'all': FXdict.keys(),
+    'basic': ['mean','median','std','mcr','kurtosis','skew'],
+    'all': [*FXdict],
     }
 
 def zerol(data,winsize):
@@ -157,7 +157,7 @@ def slidingWindow(P,data,label=None):
                 X[j,i,wi] = fx
                 
         if label is not None:
-            Y[wi] = mode(label[w:w+winsize])[0]
+            Y[wi] = mode(label[w:w+winsize])[0]       
             
         # increase output index
         wi += 1
