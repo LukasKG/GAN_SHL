@@ -8,11 +8,9 @@ import warnings
 
 if __package__ is None or __package__ == '':
     # uses current directory visibility
-    from log import log
     from params import M_PATH, make_dir_mod
 else:
     # uses current package visibility
-    from .log import log
     from .params import M_PATH, make_dir_mod
 
 def hardmax(logits):
@@ -135,12 +133,12 @@ def new_G(P,input_size,hidden_size,output_size):
     # elif P.get('G_no') == 3:
     #     G = Generator_03(input_size, hidden_size, output_size)
     else:
-        log("No model Generator_%s"%str(P.get('G_no')).zfill(2),name=P.get('log_name'),error=True)
+        P.log("No model Generator_%s"%str(P.get('G_no')).zfill(2),error=True)
         return None
     
     G.apply(weights_init_normal)
     if P.get('print_epoch'):
-        log("Created new generator.",name=P.get('log_name'))
+        P.log("Created new generator.")
     # save_Model(get_string_name(P.get('name'),run,'G'),G)
     return G
 
@@ -152,12 +150,12 @@ def new_D(P,input_size,hidden_size):
     # elif P.get('D_no') == 3:
     #     D = Discriminator_03(input_size, hidden_size)
     else:
-        log("No model Discriminator_%s"%str(P.get('D_no')).zfill(2),name=P.get('log_name'),error=True)
+        P.log("No model Discriminator_%s"%str(P.get('D_no')).zfill(2),error=True)
         return None
     
     D.apply(weights_init_normal)
     if P.get('print_epoch'):
-        log("Created new discriminator.",name=P.get('log_name'))
+        P.log("Created new discriminator.")
     # save_Model(get_string_name(P.get('name'),run,'D'),D)
     return D
 
@@ -169,12 +167,12 @@ def new_C(P,input_size,hidden_size,num_classes):
     # elif P.get('C_no') == 3:
     #     C = Classifier_03(input_size, hidden_size, num_classes)
     else:
-        log("No model Classifier_%s"%str(P.get('C_no')).zfill(2),name=P.get('log_name'),error=True)
+        P.log("No model Classifier_%s"%str(P.get('C_no')).zfill(2),error=True)
         return None
     
     C.apply(weights_init_normal)
     if P.get('print_epoch'):
-        log("Created new classifier.",name=P.get('log_name'))
+        P.log("Created new classifier.")
     # save_Model(get_string_name(P.get('name'),run,'C'),C)
     return C
 
@@ -239,13 +237,13 @@ def load_Model(P,name):
     
     if not os.path.isfile(PATH):
         if P.get('print_epoch'):
-            log("Model \"%s\" does not exist."%PATH,error=False,name=P.get('log_name'))
+            P.log("Model \"%s\" does not exist."%PATH,error=False)
         return None
     
     model = torch.load(PATH)
     model.eval()
     
-    log("Loaded model %s."%name,name=P.get('log_name'))
+    P.log("Loaded model %s."%name)
     
     return model
     
@@ -255,14 +253,14 @@ def load_Pretrain_C(P):
     # Check for a pretrained model for the individual run
     if os.path.isfile(PATH+'.pt'):
         model = torch.load(PATH+'.pt')
-        log("Loaded pretrained classifier %s."%(P.get('pretrain')),name=P.get('log_name'))
+        P.log("Loaded pretrained classifier %s."%(P.get('pretrain')))
     # Check for a general pretrained model
     elif os.path.isfile(PATH+'.pt'):
         model = torch.load(PATH+'.pt')
-        log("Loaded pretrained classifier %s."%(P.get('pretrain')),name=P.get('log_name'))
+        P.log("Loaded pretrained classifier %s."%(P.get('pretrain')))
     # No pretrained model found
     else:
-        log("Did not find pretrained classifier %s."%(P.get('pretrain')),name=P.get('log_name'))
+        P.log("Did not find pretrained classifier %s."%(P.get('pretrain')))
         return None
     
     model.eval()
@@ -324,8 +322,7 @@ def clear(name):
             if fname.startswith(name):
                 os.remove(os.path.join(M_PATH, fname))
                 cleared = True
-    if cleared:
-        log("CLEARED MODEL \""+name+"\"",save=False)
+    return cleared
 
 def clear_cache():
     if torch.cuda.is_available():
@@ -347,11 +344,11 @@ def load_G_Diff(P):
     mat = np.zeros((P.get('runs'),int(P.get('epochs')/P.get('save_step'))+1,len(P.get('label'))))
     
     if not os.path.isfile(PATH):
-        log("Could not find G differences for model \"%s\""%P.get('name'),name=P.get('log_name'))
+        P.log("Could not find G differences for model \"%s\""%P.get('name'))
     else:
         diff = torch.load(PATH)
         mat = fit_array(mat,diff['diff_G'])
-        log("Loaded G differences for model \"%s\""%P.get('name'),name=P.get('log_name'))
+        P.log("Loaded G differences for model \"%s\""%P.get('name'))
     return mat
 
 # -------------------
@@ -373,11 +370,11 @@ def load_R_Acc(P):
     mat_R[:,0] = 0.0
     
     if not os.path.isfile(PATH):
-        log("Could not find accuracies for model \"%s\""%P.get('name'),name=P.get('log_name'))
+        P.log("Could not find accuracies for model \"%s\""%P.get('name'))
     else:
         acc = torch.load(PATH)
         mat_R = fit_array(mat_R,acc['mat_R'])
-        log("Loaded accuracies for model \"%s\""%P.get('name'),name=P.get('log_name'))
+        P.log("Loaded accuracies for model \"%s\""%P.get('name'))
     return mat_R
 
 def save_Acc(P,mat_G,mat_D,mat_C):
@@ -401,13 +398,13 @@ def load_Acc(P):
     mat_C[:,0] = 0.0
 
     if not os.path.isfile(PATH):
-        log("Could not find accuracies for model \"%s\""%P.get('name'),name=P.get('log_name'))
+        P.log("Could not find accuracies for model \"%s\""%P.get('name'))
     else:
         acc = torch.load(PATH)
         mat_G = fit_array(mat_G,acc['mat_G'])
         mat_D = fit_array(mat_D,acc['mat_D'])
         mat_C = fit_array(mat_C,acc['mat_C'])
-        log("Loaded accuracies for model \"%s\""%P.get('name'),name=P.get('log_name'))
+        P.log("Loaded accuracies for model \"%s\""%P.get('name'))
     return mat_G, mat_D, mat_C
 
 def fit_array(target,source):

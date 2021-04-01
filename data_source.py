@@ -5,10 +5,8 @@ from numpy.matlib import repmat
 import os
 
 if __package__ is None or __package__ == '':
-    from log import log
     from sliding_window import slidingWindow
 else:
-    from .log import log
     from .sliding_window import slidingWindow
 
 
@@ -267,25 +265,25 @@ def load_data(P):
     assert all(channel in NAMES_X[1:] or channel == 'Magnitude' for channel in P.get('channels'))
     assert all(channel in NAMES_X[1:] for channel in ACC_CHANNELS) or not P.get('magnitude') 
     
-    log("Loading dataset %s.. (Location: %s | FX: %s)"%(P.get('dataset'),P.get('location'),P.get('FX_sel')),name=P.get('log_name'))
+    P.log("Loading dataset %s.. (Location: %s | FX: %s)"%(P.get('dataset'),P.get('location'),P.get('FX_sel')))
     
     if P.get('dataset') in SAVE_DATA:
         dataset_hash = P.get_dataset_hash_str()
         hash_path = get_path(P,dataset='Hash') + dataset_hash + '/'
         if hash_exists(hash_path):
             F = load_processed(hash_path)
-            log("Loaded processed data (%s)."%dataset_hash,name=P.get('log_name'))
+            P.log("Loaded processed data (%s)."%dataset_hash)
             return F
 
     V = read_data(P)
-    log("Read data.",name=P.get('log_name'))
+    P.log("Read data.")
 
     F = process_data(P,V)
-    log("Processed data.",name=P.get('log_name'))
+    P.log("Processed data.")
     
     if P.get('dataset') in SAVE_DATA:
         save_processed(F,hash_path)
-        log("Saved processed data (%s)."%dataset_hash,name=P.get('log_name'))
+        P.log("Saved processed data (%s)."%dataset_hash)
         
     return F
     

@@ -17,14 +17,12 @@ plt.ioff()
 if __package__ is None or __package__ == '':
     import data_source as ds
     import GAN
-    from log import log
     from params import Params, save_fig, save_trials, load_trials
     from plot_confusion_matrix import plot_confusion_matrix
     import preprocessing as pp
 else:
     from . import data_source as ds
     from . import GAN
-    from .log import log
     from .params import Params, save_fig, save_trials, load_trials
     from .plot_confusion_matrix import plot_confusion_matrix
     from . import preprocessing as pp
@@ -120,7 +118,7 @@ def hyperopt_C(eval_step=25,max_evals=None):
             acc_mat[run] = np.mean([GAN.get_accuracy(C(XV), YV) for (XV, YV) in DL_V])
               
         acc = np.mean(acc_mat)
-        log(f"Perf: {acc:.5f} - Checked Params: "+", ".join([str(key)+' = '+str(val) for key,val in args.items()]),name='hyperopt')
+        P0.log(f"Perf: {acc:.5f} - Checked Params: "+", ".join([str(key)+' = '+str(val) for key,val in args.items()]),name='hyperopt')
         return -acc
     
     trials = load_trials(P)
@@ -130,14 +128,14 @@ def hyperopt_C(eval_step=25,max_evals=None):
     while True:
         if max_evals is not None:
             if len(trials.trials) >= max_evals:
-                log(f"Maximum number of evaluations reached ({max_evals})",name='hyperopt')
+                P.log(f"Maximum number of evaluations reached ({max_evals})",name='hyperopt')
                 break
         evals = len(trials.trials) + eval_step
 
         best_param = fmin(obj, param_space, algo=tpe.suggest, max_evals=evals, trials=trials, rstate=np.random.RandomState(42))
-        log("Best Params:",name='hyperopt')
+        P.log("Best Params:",name='hyperopt')
         for key,val in space_eval(param_space, best_param).items():
-            log(str(key)+': '+str(val),name='hyperopt')
+            P.log(str(key)+': '+str(val),name='hyperopt')
         
         save_trials(P,trials)
     
@@ -210,12 +208,12 @@ def sklearn_baseline(P):
 def hyperopt_Search(P,param_space,eval_step=25,max_evals=None):
     P.set('R_active',False)
     P.set('save_step',P.get('epochs')+1)
-    log("Params: "+str(P),name='hyperopt')
+    P.log("Params: "+str(P),name='hyperopt')
     
     if P.get('CUDA') and torch.cuda.is_available():
-        log("CUDA Training.",name='hyperopt')
+        P.log("CUDA Training.",name='hyperopt')
     else:
-        log("CPU Training.",name='hyperopt')
+        P.log("CPU Training.",name='hyperopt')
     
     DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, get_Data(P))
     
@@ -230,7 +228,7 @@ def hyperopt_Search(P,param_space,eval_step=25,max_evals=None):
             mat_acc[run] = np.mean([GAN.get_accuracy(C(XV),YV) for XV, YV in DL_V])
             
         acc = np.mean(mat_acc)
-        log(f"Perf: {acc:.5f} - Checked Params: "+", ".join([str(key)+' = '+str(val) for key,val in args.items()]),name='hyperopt')
+        P.log(f"Perf: {acc:.5f} - Checked Params: "+", ".join([str(key)+' = '+str(val) for key,val in args.items()]),name='hyperopt')
         return -acc
  
     trials = load_trials(P)
@@ -240,27 +238,27 @@ def hyperopt_Search(P,param_space,eval_step=25,max_evals=None):
     while True:
         if max_evals is not None:
             if len(trials.trials) >= max_evals:
-                log(f"Maximum number of evaluations reached ({max_evals})",name='hyperopt')
+                P.log(f"Maximum number of evaluations reached ({max_evals})",name='hyperopt')
                 break
             evals = min(max_evals,len(trials.trials) + eval_step)
         else:
             evals = len(trials.trials) + eval_step
 
         best_param = fmin(obj, param_space, algo=tpe.suggest, max_evals=evals, trials=trials, rstate=np.random.RandomState(42))
-        log("Best Params:",name='hyperopt')
+        P.log("Best Params:",name='hyperopt')
         for key,val in space_eval(param_space, best_param).items():
-            log(str(key)+': '+str(val),name='hyperopt')
+            P.log(str(key)+': '+str(val),name='hyperopt')
         
         save_trials(P,trials)
 
     
 def get_Results(P):
-    log("Params: "+str(P),name=P.get('log_name'))
+    P.log("Params: "+str(P))
     
     if P.get('CUDA') and torch.cuda.is_available():
-        log("CUDA Training.",name=P.get('log_name'))
+        P.log("CUDA Training.")
     else:
-        log("CPU Training.",name=P.get('log_name'))
+        P.log("CPU Training.")
     
     DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, get_Data(P))
     
