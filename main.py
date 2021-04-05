@@ -252,7 +252,7 @@ def hyperopt_Search(P,param_space,eval_step=25,max_evals=None):
         save_trials(P,trials)
 
     
-def get_Results(P):
+def get_Results(P,P_val=None):
     P.log("Params: "+str(P))
     
     if P.get('CUDA') and torch.cuda.is_available():
@@ -261,6 +261,9 @@ def get_Results(P):
         P.log("CPU Training.")
     
     DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, get_Data(P))
+    
+    if P_val is not None:
+        _, _, DL_V = pp.get_all_dataloader(P_val, get_Data(P_val))
     
     ACC = None
     YF = None
@@ -273,8 +276,12 @@ def get_Results(P):
     
     for run in range(P.get('runs')):
     
-        mat_accuracy, G, D, C, R = GAN.train_GAN(P, DL_L, DL_U_iter, DL_V, name=P.get('name')+'_%d'%run)
+        mat_accuracy, G, D, C = GAN.train_GAN(P, DL_L, DL_U_iter, DL_V, name=P.get('name')+'_%d'%run)
         
+        if P.get('R_active'):
+            acc_BASE, R = GAN.train_Base(P, DL_L, DL_U_iter, DL_V, name=P.get('name')+'_%d'%run)
+            mat_accuracy = np.concatenate((mat_accuracy,acc_BASE))
+            
         if ACC is None:
             ACC = np.expand_dims(mat_accuracy,axis=2)
         else:
@@ -303,9 +310,9 @@ def get_Results(P):
         
     return ACC, (YF, RF, PF)
 
-def evaluate(P):
+def evaluate(P,P_val=None):
     P.set('R_active',True)
-    ACC, (YF, RF, PF) = get_Results(P)
+    ACC, (YF, RF, PF) = get_Results(P,P_val)
     
     # -------------------
     #  Plot Accuracy
@@ -369,12 +376,14 @@ def evaluate(P):
     YF = pp.one_hot_to_labels(P,YF)
     RF = pp.one_hot_to_labels(P,RF)
     PF = pp.one_hot_to_labels(P,PF)
-    
-    con_mat = confusion_matrix(YF, PF, labels=None, sample_weight=None, normalize=None)
-    plot_confusion_matrix(np.divide(con_mat,P.get('runs')).round().astype(int),P,name='C',title='Confusion matrix')
-    
-    con_mat = confusion_matrix(YF, RF, labels=None, sample_weight=None, normalize=None)
-    plot_confusion_matrix(np.divide(con_mat,P.get('runs')).round().astype(int),P,name='R',title='Confusion matrix')
+
+    for Y, name in [(PF,'C'),(RF,'R')]:
+        con_mat = confusion_matrix(YF, Y, labels=None, sample_weight=None, normalize=None)
+        plot_confusion_matrix(np.divide(con_mat,P.get('runs')).round().astype(int),P,name=name,title='Confusion matrix',fmt='d')
+        
+        con_mat = confusion_matrix(YF, Y, labels=None, sample_weight=None, normalize='all')
+        plot_confusion_matrix(con_mat,P,name=name+'_normalised',title='Confusion matrix',fmt='0.3f')
+
     
    
 def main():
@@ -391,21 +400,24 @@ def main():
         
         'G_ac_func'       : hp.choice('G_ac_func',['relu','leaky','leaky20','sig']),
         'G_hidden'        : scope.int(hp.qloguniform('G_hidden', np.log(16), np.log(1024), q=1)),
+        'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 0, 4, q=1)), 
         'G_optim'         : hp.choice('G_optim',['AdamW','SGD']),
         
         'D_ac_func'       : hp.choice('D_ac_func',['relu','leaky','leaky20','sig']),
         'D_hidden'        : scope.int(hp.qloguniform('D_hidden', np.log(16), np.log(1024), q=1)),
+        'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 0, 4, q=1)), 
         'D_optim'         : hp.choice('D_optim',['AdamW','SGD']),
         
         'C_ac_func'       : hp.choice('C_ac_func',['relu','leaky','leaky20','sig']),
-        'C_aco_func'      : hp.choice('C_ac_func',['gumbel','hardmax','softmax']),
-        'C_hidden'        : scope.int(hp.qloguniform('C_hidden', np.log(16), np.log(1024), q=1)),  
+        #'C_aco_func'      : hp.choice('C_aco_func',['gumbel','hardmax','softmax']),
+        'C_hidden'        : scope.int(hp.qloguniform('C_hidden', np.log(16), np.log(1024), q=1)),
+        'C_hidden_no'     : scope.int(hp.quniform('C_hidden_no', 0, 4, q=1)), 
         'C_optim'         : hp.choice('C_optim',['AdamW','SGD']),
         'C_tau'           : hp.loguniform('C_tau', np.log(0.01), np.log(10.)),
     }
     
     P_search = Params(
-        name = 'Hyperopt_Search',
+        name = 'Hyper_GAN',
         dataset = 'SHL',
         CUDA = False,
         
@@ -413,7 +425,7 @@ def main():
         epochs = 100,
         runs = 5,
         
-        FX_sel = 'basic',
+        FX_sel = 'all',
         Cross_val = 'user',
         
         User_L = 3,
@@ -463,19 +475,21 @@ def main():
         ) 
     
     P = Params(
-        name = 'Eval_Users',
+        name = 'eval_softmax',
         dataset = 'SHL',
+        CUDA = False,
+        
         print_epoch = False,
         epochs = 500,
         save_step = 10,
         runs = 5,
         
-        FX_sel = 'basic',
+        FX_sel = 'all',
         Cross_val = 'none',
         
         C_basic_train = False,
         
-        sample_no = None,
+        sample_no = 800,
         undersampling = False,
         oversampling = False,
         
@@ -483,33 +497,54 @@ def main():
         User_U = 2,
         User_V = 3,
         
-        CB1 = 0.0019452099362861814, 
-        CLR = 0.0005316253189632093, 
-        C_ac_func = 'leaky', 
-        C_aco_func = 'gumbel', 
-        C_hidden = 120, 
+        CB1 = 0.010305926728118187, 
+        CLR = 0.0017731978111430147, 
+        C_ac_func = 'sig', 
+        C_hidden = 254, 
+        C_hidden_no = 2, 
         C_optim = 'AdamW', 
-        C_tau = 1.0,  
+        C_tau = 5.576378501612518, 
         
-        DB1 = 0.008572805104490166, 
-        DLR = 0.02167128484058551, 
-        D_ac_func = 'relu', 
-        D_hidden = 428, 
-        D_optim = 'SGD',
+        DB1 = 0.031153071611443442, 
+        DLR = 0.013359442807976967, 
+        D_ac_func = 'leaky', 
+        D_hidden = 757, 
+        D_hidden_no = 1, 
+        D_optim = 'SGD', 
         
-        GB1 = 0.6558919374993589, 
-        GLR = 0.009465669514191638, 
-        G_ac_func = 'sig', 
-        G_hidden = 111, 
+        GB1 = 0.9293227790745483, 
+        GLR = 0.003310001178590957, 
+        G_ac_func = 'relu', 
+        G_hidden = 158, 
+        G_hidden_no = 3, 
         G_optim = 'SGD', 
         
-        batch_size = 175
+        batch_size = 21
         ) 
     
     #hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
-    #evaluate(P_test)
+    # evaluate(P_test)
     
-    evaluate(P)
+    # P_val = P.copy()
+    # P_val.set_keys(
+    #     sample_no = None,
+    #     undersampling = False,
+    #     oversampling = False,
+    #     )
+    
+    # evaluate(P,P_val)
+    # P.set_keys(
+    #     name = 'eval_gumbel',
+    #     C_aco_func = 'gumbel',
+    #     )
+    # evaluate(P,P_val)
+    # P.set_keys(
+    #     name = 'eval_hardmax',
+    #     C_aco_func = 'hardmax',
+    #     )
+    # evaluate(P,P_val)
+    
+    
     hyperopt_Search(P_search,param_space)
     
     #sklearn_baseline(P)

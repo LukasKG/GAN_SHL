@@ -39,20 +39,24 @@ activation_functions = {
 # -------------------
 
 class Generator_01(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, ac_func='leaky', aco_func='tanh'):
+    def __init__(self, input_size, hidden_size, output_size, hidden_no=1, ac_func='leaky', aco_func='tanh'):
         super(Generator_01, self).__init__()
         self.ac = activation_functions[ac_func]
         self.aco = activation_functions[aco_func]
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc3 = nn.Linear(hidden_size, output_size)
+        self.input = nn.Linear(input_size, hidden_size)
+        self.hidden = []
+        for _ in range(hidden_no):
+            self.hidden.append(nn.Linear(hidden_size, hidden_size))
+        self.hidden = nn.ModuleList(self.hidden)
+        self.output = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
-        out = self.fc1(x)
+        out = self.input(x)
         out = self.ac(out)
-        out = self.fc2(out)
-        out = self.ac(out)
-        out = self.fc3(out)
+        for layer in self.hidden:
+            out = layer(out)
+            out = self.ac(out)
+        out = self.output(out)
         out = self.aco(out)
         return out
 
@@ -62,20 +66,24 @@ class Generator_01(nn.Module):
 # -------------------    
 
 class Discriminator_01(nn.Module):
-    def __init__(self, input_size, hidden_size, ac_func='leaky', aco_func='sig'):
+    def __init__(self, input_size, hidden_size, hidden_no=1, ac_func='leaky', aco_func='sig'):
         super(Discriminator_01, self).__init__()
         self.ac = activation_functions[ac_func]
         self.aco = activation_functions[aco_func]
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc3 = nn.Linear(hidden_size, 1)
+        self.input = nn.Linear(input_size, hidden_size)
+        self.hidden = []
+        for _ in range(hidden_no):
+            self.hidden.append(nn.Linear(hidden_size, hidden_size))
+        self.hidden = nn.ModuleList(self.hidden)
+        self.output = nn.Linear(hidden_size, 1)
 
     def forward(self, x):
-        out = self.fc1(x)
+        out = self.input(x)
         out = self.ac(out)
-        out = self.fc2(out)
-        out = self.ac(out)
-        out = self.fc3(out)
+        for layer in self.hidden:
+            out = layer(out)
+            out = self.ac(out)
+        out = self.output(out)
         out = self.aco(out)
         return out
 
@@ -86,7 +94,7 @@ class Discriminator_01(nn.Module):
 
 class Classifier_01(nn.Module):
     ''' Gumbel Softmax (Discrete output is default) '''
-    def __init__(self, input_size, hidden_size, num_classes, ac_func='relu', aco_func='gumbel', hard=True, tau=1, train=True):
+    def __init__(self, input_size, hidden_size, num_classes, hidden_no=1, ac_func='relu', aco_func='gumbel', hard=True, tau=1, train=True):
         super(Classifier_01, self).__init__()
         self.ac = activation_functions[ac_func]
         if aco_func == 'gumbel':
@@ -94,9 +102,12 @@ class Classifier_01(nn.Module):
             self.aco = gumbel
         else:
             self.aco = activation_functions[aco_func]
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc3 = nn.Linear(hidden_size, num_classes)
+        self.input = nn.Linear(input_size, hidden_size)
+        self.hidden = []
+        for _ in range(hidden_no):
+            self.hidden.append(nn.Linear(hidden_size, hidden_size))
+        self.hidden = nn.ModuleList(self.hidden)
+        self.output = nn.Linear(hidden_size, num_classes)
         
         self.train = train
         self.soft = activation_functions['softmax']
@@ -105,11 +116,12 @@ class Classifier_01(nn.Module):
     def mode_eval(self): self.train = False
         
     def forward(self, x):
-        out = self.fc1(x)
+        out = self.input(x)
         out = self.ac(out)
-        out = self.fc2(out)
-        out = self.ac(out)
-        out = self.fc3(out)
+        for layer in self.hidden:
+            out = layer(out)
+            out = self.ac(out)
+        out = self.output(out)
         if self.train:
             out = self.aco(out)
         else:
@@ -127,7 +139,7 @@ def weights_init_normal(m):
 
 def new_G(P,input_size,hidden_size,output_size):
     if P.get('G_no') == 1:
-        G = Generator_01(input_size, hidden_size, output_size, ac_func=P.get('G_ac_func'), aco_func=P.get('G_aco_func'))
+        G = Generator_01(input_size, hidden_size, output_size, hidden_no=P.get('G_hidden_no'), ac_func=P.get('G_ac_func'), aco_func=P.get('G_aco_func'))
     # elif P.get('G_no') == 2:
     #     G = Generator_02(input_size, hidden_size, output_size)
     # elif P.get('G_no') == 3:
@@ -144,7 +156,7 @@ def new_G(P,input_size,hidden_size,output_size):
 
 def new_D(P,input_size,hidden_size):
     if P.get('D_no') == 1:
-        D = Discriminator_01(input_size, hidden_size, ac_func=P.get('D_ac_func'), aco_func=P.get('D_aco_func'))
+        D = Discriminator_01(input_size, hidden_size, hidden_no=P.get('D_hidden_no'), ac_func=P.get('D_ac_func'), aco_func=P.get('D_aco_func'))
     # elif P.get('D_no') == 2:
     #     D = Discriminator_02(input_size, hidden_size)
     # elif P.get('D_no') == 3:
@@ -161,7 +173,7 @@ def new_D(P,input_size,hidden_size):
 
 def new_C(P,input_size,hidden_size,num_classes):
     if P.get('C_no') == 1:
-        C = Classifier_01(input_size, hidden_size, num_classes, ac_func=P.get('C_ac_func'), aco_func=P.get('C_aco_func'), hard=True, tau=P.get('C_tau'), train=True)
+        C = Classifier_01(input_size, hidden_size, num_classes, hidden_no=P.get('C_hidden_no'), ac_func=P.get('C_ac_func'), aco_func=P.get('C_aco_func'), hard=True, tau=P.get('C_tau'), train=True)
     # elif P.get('C_no') == 2:
     #     C = Classifier_02(input_size, hidden_size, num_classes)
     # elif P.get('C_no') == 3:

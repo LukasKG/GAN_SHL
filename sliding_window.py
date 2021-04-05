@@ -11,6 +11,10 @@ else:
     # uses current package visibility
     from .log import log
 
+# Energy
+def energy(data,*args,**kwargs):
+    return np.dot(data.T,data)
+
 # Zero Crossing Count
 def zcc(data,*args,**kwargs):
     return np.nonzero(np.diff(data > 0))[0].shape[0]
@@ -31,11 +35,14 @@ def get_FX_list(P):
 FXdict = {
   "mean": (np.mean,None),
   "std": (np.std,None),
-  "median": (np.median,None),
-  "zcr": (zcc,None),
+  #"zcr": (zcc,None),
   "mcr": (mcc,None),
+  #"auto_correlation": (lambda x:1,None),
   "kurtosis": (kurtosis,None),
-  "skew": (skew,None)
+  "skew": (skew,None),
+  "min": (np.min,None),
+  "max": (np.max,None),
+  "median": (np.median,None),
 }
 
 FEATURES = {
@@ -169,3 +176,12 @@ def slidingWindow(P,data,label=None):
         return X.squeeze(), Y
     else:
         return X.squeeze()
+    
+if __name__ == "__main__":
+    data = np.arange(10)+1
+    print(data)
+    print(zcc(data))
+    print(mcc(data))
+    print(energy(data))
+    FX, FXOpts = FXdict['auto_correlation']
+    print(FX(data))

@@ -18,7 +18,35 @@ def get_accuracy(Y_pred,Y_true):
         return (Y_pred.round() == Y_true).sum().item() / Y_true.size(0)
     else:
         return (Y_pred.max(dim=1)[1] == Y_true.max(dim=1)[1]).sum().item() / Y_true.size(0)
+
+def train_Base(P, DL_L, DL_U_iter, DL_V, name=None):   
+    if name is None:
+        name = P.get('name')
+        
+    C_Loss = torch.nn.BCELoss()
+    if P.get('CUDA') and torch.cuda.is_available():
+        C_Loss.cuda()
+
+    mat_accuracy = np.zeros((1, int(P.get('epochs')/P.get('save_step'))+1))
+    R = network.load_Ref(P,name)  
+    optimizer_R = network.get_optimiser(P,'C',R.parameters())
     
+    for epoch in range(P.get('epochs')):
+        for i, (X1, Y1) in enumerate(DL_L, 1):
+            optimizer_R.zero_grad()
+            PR = R(X1)
+            loss = C_Loss(PR, Y1)
+            loss.backward()
+            optimizer_R.step()
+            
+        if (epoch+1)%P.get('save_step') == 0:
+            idx = int(epoch/P.get('save_step'))+1
+            R.mode_eval()
+            mat_accuracy[0,idx] = np.mean([get_accuracy(R(XV), YV) for XV, YV in DL_V])
+            R.mode_train()
+            
+    return mat_accuracy, R
+            
 def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
     
     # -------------------
@@ -53,17 +81,13 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
     #  Accuracy
     # -------------------
 
-    mat_accuracy = np.zeros((4 if P.get('R_active') else 3, int(P.get('epochs')/P.get('save_step'))+1))
+    mat_accuracy = np.zeros((3, int(P.get('epochs')/P.get('save_step'))+1))
         
     # -------------------
     #  Networks
     # -------------------
     
     G, D, C = network.load_GAN(P,name)
-    
-    R = None
-    if(P.get('R_active')):
-        R = network.load_Ref(P,name)
         
     # -------------------
     #  Optimizers
@@ -72,9 +96,6 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
     optimizer_G = network.get_optimiser(P,'G',G.parameters())
     optimizer_D = network.get_optimiser(P,'D',D.parameters())
     optimizer_C = network.get_optimiser(P,'C',C.parameters())
-    
-    if(P.get('R_active')):
-        optimizer_R = network.get_optimiser(P,'C',R.parameters())
     
     # -------------------
     #  Training
@@ -95,7 +116,7 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
               XV, YV,  PV - Validation Data,    actual Labels,        predicted Labels (C)       | Validation samples
           R1, F2, F3,  R4 - Real/Fake Labels
         """
-        for i, data in enumerate(DL_L, 1):
+        for i, (X1, Y1) in enumerate(DL_L, 1):
             
             loss_G = []
             loss_D = []
@@ -104,7 +125,6 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             # -------------------
             #  Train the classifier on real samples
             # -------------------
-            X1, Y1 = data
             W1 = torch.cat((X1,Y1),dim=1)
             R1 = floatTensor(W1.shape[0], 1).fill_(1.0)
             
@@ -115,13 +135,6 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
                 loss_C.append(loss)
                 loss.backward()
                 optimizer_C.step()
-            
-            if P.get('R_active'):
-                optimizer_R.zero_grad()
-                PR = R(X1)
-                loss = C_Loss(PR, Y1)
-                loss.backward()
-                optimizer_R.step()
                 
             # -------------------
             #  Train the discriminator to label real samples
@@ -238,8 +251,6 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             acc_C_real = []
             
             C.mode_eval()
-            if P.get('R_active'):
-                R.mode_eval()
                 
             for data in DL_V:
                 
@@ -247,10 +258,6 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             
                 # Predict labels
                 PV = C(XV)
-
-                if P.get('R_active'):
-                    PR = R(XV)
-                    mat_accuracy[3,idx] = get_accuracy(PR, YV)
                 
                 # Generate Synthetic Data
                 Z = floatTensor(np.random.normal(0, 1, (YV.shape[0], P.get('noise_shape'))))
@@ -276,8 +283,6 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
                 acc_C_real.append(get_accuracy(PV, YV))
                 
             C.mode_train()
-            if P.get('R_active'):
-                R.mode_train()
                 
             acc_D_real = np.mean(acc_D_real)
             acc_D_vs_C = np.mean(acc_D_vs_C)
@@ -301,9 +306,9 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
     # -------------------
     
     if P.get('save_GAN'):
-        network.save_GAN(name,G,D,C,R)
+        network.save_GAN(name,G,D,C)
             
-    return mat_accuracy, G, D, C, R
+    return mat_accuracy, G, D, C
     
 if __name__ == "__main__":
     import main

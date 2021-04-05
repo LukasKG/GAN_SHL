@@ -145,30 +145,33 @@ DEFAULT_PARAMS = {
         'C_basic_train'   : True,                       # True: The classifier is trained on real data | False: the classifier is only trained against the discriminator
         'R_active'        : True,                       # True: a reference classifier is used as baseline
         
-        'CLR'             : 0.003,                      # Classifier learning rate
-        'CB1'             : 0.9,                        # Classifier decay rate for first moment estimates
-        'CB2'             : 0.999,                      # Classifier decay rate for second-moment estimates
+        'CLR'             : 0.003,                      # Classifier: Learning rate
+        'CB1'             : 0.9,                        # Classifier: Decay rate for first moment estimates
+        'CB2'             : 0.999,                      # Classifier: Decay rate for second-moment estimates
         'C_hidden'        : 256,                        # Classifier: Number of nodes in the hidden layers
+        'C_hidden_no'     : 1,                          # Classifier: Number of hidden layers   
         'C_ac_func'       : 'relu',                     # Classifier: Type of activation function for the hidden layers
         'C_aco_func'      : 'gumbel',                   # Classifier: Type of activation function for the output layer
         'C_tau'           : 1,                          # Classifier: Temperature of gumbel softmax
         'C_optim'         : 'AdamW',                    # Classifier: Optimiser
         
-        'DLR'             : 0.0125,                     # Discriminator learning rate
-        'DB1'             : 0.75,                       # Discriminator decay rate for first moment estimates
-        'DB2'             : 0.999,                      # Discriminator decay rate for second-moment estimates
+        'DLR'             : 0.0125,                     # Discriminator: Learning rate
+        'DB1'             : 0.75,                       # Discriminator: Decay rate for first moment estimates
+        'DB2'             : 0.999,                      # Discriminator: Decay rate for second-moment estimates
         'D_hidden'        : 128,                        # Discriminator: Number of nodes in the hidden layers
+        'D_hidden_no'     : 1,                          # Discriminator: Number of hidden layers     
         'D_ac_func'       : 'leaky',                    # Discriminator: Type of activation function for the hidden layers
         'D_aco_func'      : 'sig',                      # Discriminator: Type of activation function for the output layer
-        'D_optim'         : 'AdamW',                    # Classifier: Optimiser
+        'D_optim'         : 'AdamW',                    # Discriminator: Optimiser
         
+        'GLR'             : 0.0005,                     # Generator: Learning rate
+        'GB1'             : 0.5,                        # Generator: Decay rate for first moment estimates
+        'GB2'             : 0.999,                      # Generator: Decay rate for second-moment estimates 
         'G_hidden'        : 128,                        # Generator: Number of nodes in the hidden layers
+        'G_hidden_no'     : 1,                          # Generator: Number of hidden layers   
         'G_ac_func'       : 'leaky',                    # Generator: Type of activation function for the hidden layers
-        'G_aco_func'      : 'tanh',                     # Generator: Type of activation function for the output layer
-        'GLR'             : 0.0005,                     # Generator learning rate
-        'GB1'             : 0.5,                        # Generator decay rate for first moment estimates
-        'GB2'             : 0.999,                      # Generator decay rate for second-moment estimates     
-        'G_optim'         : 'AdamW',                    # Classifier: Optimiser
+        'G_aco_func'      : 'tanh',                     # Generator: Type of activation function for the output layer    
+        'G_optim'         : 'AdamW',                    # Generator: Optimiser
         }
 
 class Params:
@@ -192,10 +195,6 @@ class Params:
                 self.set('labels',ds.get_labels())
         else:
             self.params = P
-
-    def update(self, dic):
-        for key, val in dic.items():
-            self.set(key,val)
 
     def update_channels(self):
         if self.get('channels') == 'all':
@@ -252,6 +251,15 @@ class Params:
         self.params[key] = val
         if key=='channels': self.update_channels()
     
+    def set_keys(self,**kwargs):
+        print(locals()['kwargs'])
+        for key, val in locals()['kwargs'].items():
+            self.set(key,val)
+        
+    def update(self, dic):
+        for key, val in dic.items():
+            self.set(key,val)
+            
     def inc(self,key):
         self.params[key] += 1
     
