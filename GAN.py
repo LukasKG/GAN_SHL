@@ -17,13 +17,22 @@ def get_accuracy(Y_pred,Y_true):
     else:
         return (Y_pred.max(dim=1)[1] == Y_true.max(dim=1)[1]).sum().item() / Y_true.size(0)
 
+def cross_entropy_one_hot(input, target):
+  _, labels = target.max(dim=1)
+  return torch.nn.CrossEntropyLoss()(input, labels)
+
+def cross_entropy_one_hot_cuda(input, target):
+  _, labels = target.max(dim=1)
+  return torch.nn.CrossEntropyLoss().cuda()(input, labels)
+
 def train_Base(P, DL_L, DL_U_iter, DL_V, name=None):   
     if name is None:
         name = P.get('name')
+    
+    R_Loss = cross_entropy_one_hot
         
-    C_Loss = torch.nn.BCELoss()
     if P.get('CUDA') and torch.cuda.is_available():
-        C_Loss.cuda()
+        R_Loss = cross_entropy_one_hot_cuda
 
     mat_accuracy = np.zeros((1, int(P.get('epochs')/P.get('save_step'))+1))
     R = network.load_Ref(P,name)  
@@ -34,7 +43,7 @@ def train_Base(P, DL_L, DL_U_iter, DL_V, name=None):
         for i, (X1, Y1) in enumerate(DL_L, 1):
             optimizer_R.zero_grad()
             PR = R(X1)
-            loss = C_Loss(PR, Y1)
+            loss = R_Loss(PR, Y1)
             loss.backward()
             optimizer_R.step()
             
@@ -45,7 +54,8 @@ def train_Base(P, DL_L, DL_U_iter, DL_V, name=None):
                 mat_accuracy[0,idx] = np.mean([get_accuracy(R(XV), YV) for XV, YV in DL_V])
             
     return mat_accuracy, R
-            
+ 
+        
 def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
     
     # -------------------
@@ -61,14 +71,12 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
     #  CUDA
     # -------------------
     
-    G_Loss = torch.nn.BCELoss() # might try logitsloss
     D_Loss = torch.nn.BCELoss()
-    C_Loss = torch.nn.BCELoss()
+    C_Loss = cross_entropy_one_hot
 
     if P.get('CUDA') and torch.cuda.is_available():
-        G_Loss.cuda()
         D_Loss.cuda()
-        C_Loss.cuda()
+        C_Loss = cross_entropy_one_hot_cuda
         floatTensor = torch.cuda.FloatTensor
         #P.log("CUDA Training.")
         #network.clear_cache()
@@ -160,7 +168,7 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             # -------------------
             A2 = D(W2)
             R2 = floatTensor(W2.shape[0], 1).fill_(1.0)
-            loss = C_Loss(A2, R2)
+            loss = D_Loss(A2, R2)
             loss_C.append(loss)
             loss.backward()
             optimizer_C.step()
@@ -212,7 +220,7 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             # -------------------
             A3 = D(W3)
             R3 = floatTensor(W3.shape[0], 1).fill_(1.0)
-            loss = G_Loss(A3, R3)
+            loss = D_Loss(A3, R3)
             loss_G.append(loss)
             loss.backward()
             optimizer_G.step()

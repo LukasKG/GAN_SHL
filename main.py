@@ -344,12 +344,12 @@ def evaluate(P,P_val=None):
     ax.plot(timeline,acc_R,c=colors[3],linestyle='dashdot')
     legend.append("Accuracy $A_R$")
     
-    perf = np.zeros_like(acc_C)
-    perf[0] = 0.0
-    perf[1:] = (acc_C[1:]-acc_R[1:])/acc_R[1:]
+    # perf = np.zeros_like(acc_C)
+    # perf[0] = 0.0
+    # perf[1:] = (acc_C[1:]-acc_R[1:])/acc_R[1:]
 
-    ax.plot(timeline,perf+1,c=colors[4],linestyle='solid')
-    legend.append("Performance $P_C$")
+    # ax.plot(timeline,perf+1,c=colors[4],linestyle='solid')
+    # legend.append("Performance $P_C$")
     
     ax.set_xlim(0.0,P.get('epochs'))
     ax.set_ylim(0.0,Y_max)
@@ -379,6 +379,13 @@ def evaluate(P,P_val=None):
     
    
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-cuda', dest='CUDA', action='store_true')
+    parser.add_argument('-cpu', dest='CUDA', action='store_false')
+    parser.set_defaults(CUDA=True)
+    args = parser.parse_args()
+    
     
     param_space= {
         'batch_size'      : scope.int(hp.qloguniform('batch_size', np.log(16), np.log(512), q=1)),
@@ -411,7 +418,7 @@ def main():
     P_search = Params(
         name = 'Hyper_GAN',
         dataset = 'SHL',
-        CUDA = False,
+        CUDA = args.CUDA,
         
         print_epoch = False,
         epochs = 100,
@@ -435,8 +442,10 @@ def main():
     P_test = Params(
         name = 'Test',
         dataset = 'Test',
+        CUDA = args.CUDA,
+        
         print_epoch = False,
-        epochs = 1,
+        epochs = 5,
         save_step = 1,
         runs = 1,
         
@@ -469,10 +478,10 @@ def main():
     P = Params(
         name = 'eval_C_GAN',
         dataset = 'SHL',
-        CUDA = False,
+        CUDA = args.CUDA,
         
         print_epoch = False,
-        epochs = 3000,
+        epochs = 1000,
         save_step = 10,
         runs = 5,
         
@@ -515,7 +524,7 @@ def main():
         ) 
     
     #hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
-    # evaluate(P_test)
+    #evaluate(P_test)
     # P_test.set_keys(
     #     CUDA = False,
     #     )
@@ -533,6 +542,7 @@ def main():
         C_basic_train = True,
         )
     
+    hyperopt_Search(P_search,param_space)
     
     # P.set_keys(
     #     name = 'eval_gumbel',
@@ -550,7 +560,7 @@ def main():
     #     )
     # evaluate(P,P_val) 
     
-    hyperopt_Search(P_search,param_space)
+    
     
     #sklearn_baseline(P)
     #pytorch_baseline(P)
