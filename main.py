@@ -106,7 +106,7 @@ def hyperopt_C(eval_step=25,max_evals=None):
                 acc_mat[run] = np.mean([GAN.get_accuracy(C(XV), YV) for (XV, YV) in DL_V])
               
         acc = np.mean(acc_mat)
-        P0.log(f"Perf: {acc:.5f} - Checked Params: "+", ".join([str(key)+' = '+str(val) for key,val in args.items()]),name='hyperopt')
+        P0.log(f"Perf: {acc:.5f} - Checked Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt')
         return -acc
     
     trials = load_trials(P)
@@ -218,7 +218,7 @@ def hyperopt_Search(P,param_space,eval_step=25,max_evals=None):
                 mat_acc[run] = np.mean([GAN.get_accuracy(C(XV),YV) for XV, YV in DL_V])
             
         acc = np.mean(mat_acc)
-        P.log(f"Perf: {acc:.5f} - Checked Params: "+", ".join([str(key)+' = '+str(val) for key,val in args.items()]),name='hyperopt')
+        P0.log(f"Perf: {acc:.5f} - Checked Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt')
         return -acc
  
     trials = load_trials(P)
@@ -467,12 +467,12 @@ def main():
         ) 
     
     P = Params(
-        name = 'eval_softmax',
+        name = 'eval_C_GAN',
         dataset = 'SHL',
         CUDA = False,
         
         print_epoch = False,
-        epochs = 500,
+        epochs = 3000,
         save_step = 10,
         runs = 5,
         
@@ -489,57 +489,66 @@ def main():
         User_U = 2,
         User_V = 3,
         
-        CB1 = 0.010305926728118187, 
-        CLR = 0.0017731978111430147, 
-        C_ac_func = 'sig', 
-        C_hidden = 254, 
+        CB1 = 0.0021436223690857103, 
+        CLR = 0.0003761140344974288, 
+        C_ac_func = 'relu', 
+        C_hidden = 103, 
         C_hidden_no = 2, 
         C_optim = 'AdamW', 
-        C_tau = 5.576378501612518, 
+        C_tau = 1.2077957988503734, 
         
-        DB1 = 0.031153071611443442, 
-        DLR = 0.013359442807976967, 
+        DB1 = 0.010971248308396573, 
+        DLR = 0.008547884110448033, 
         D_ac_func = 'leaky', 
-        D_hidden = 757, 
+        D_hidden = 743, 
         D_hidden_no = 1, 
         D_optim = 'SGD', 
         
-        GB1 = 0.9293227790745483, 
-        GLR = 0.003310001178590957, 
-        G_ac_func = 'relu', 
-        G_hidden = 158, 
+        GB1 = 0.06526828762281653, 
+        GLR = 0.00018303028039262916, 
+        G_ac_func = 'leaky20', 
+        G_hidden = 337, 
         G_hidden_no = 3, 
         G_optim = 'SGD', 
         
-        batch_size = 21
+        batch_size = 31
         ) 
     
-    # hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
+    #hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
     # evaluate(P_test)
     # P_test.set_keys(
     #     CUDA = False,
     #     )
     # evaluate(P_test)
     
-    # P_val = P.copy()
-    # P_val.set_keys(
-    #     sample_no = None,
-    #     undersampling = False,
-    #     oversampling = False,
-    #     )
+    P_val = P.copy()
+    P_val.set_keys(
+        sample_no = None,
+        undersampling = False,
+        oversampling = False,
+        )
+    evaluate(P,P_val)
+    P.set_keys(
+        name = 'eval_C_Complete',
+        C_basic_train = True,
+        )
     
-    # evaluate(P,P_val)
+    
     # P.set_keys(
     #     name = 'eval_gumbel',
     #     C_aco_func = 'gumbel',
     #     )
     # evaluate(P,P_val)
     # P.set_keys(
+    #     name = 'eval_softmax',
+    #     C_aco_func = 'softmax',
+    #     )
+    # evaluate(P,P_val)
+    # P.set_keys(
     #     name = 'eval_hardmax',
     #     C_aco_func = 'hardmax',
     #     )
-    # evaluate(P,P_val)
-    
+    # evaluate(P,P_val) 
     
     hyperopt_Search(P_search,param_space)
     
