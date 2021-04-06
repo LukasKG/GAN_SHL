@@ -287,7 +287,19 @@ def load_data(P):
         
     return F
     
-  
+def get_data(P):
+    F = load_data(P)
+    
+    if P.get('Cross_val') == 'user':
+        return [F[P.get('User_L')-1], F[P.get('User_U')-1], F[P.get('User_V')-1]]
+    
+     
+    if P.get('Cross_val') == 'none':
+        X = np.concatenate([X for X,_ in F])
+        Y = np.concatenate([Y for _,Y in F])
+        return [[X,Y], [X,Y], [X,Y]]    
+
+
 if __name__ == "__main__":
     from params import Params
     

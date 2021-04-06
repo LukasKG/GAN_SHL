@@ -94,7 +94,7 @@ class Discriminator_01(nn.Module):
 
 class Classifier_01(nn.Module):
     ''' Gumbel Softmax (Discrete output is default) '''
-    def __init__(self, input_size, hidden_size, num_classes, hidden_no=1, ac_func='relu', aco_func='gumbel', hard=True, tau=1, train=True):
+    def __init__(self, input_size, hidden_size, num_classes, hidden_no=1, ac_func='relu', aco_func='gumbel', hard=True, tau=1):
         super(Classifier_01, self).__init__()
         self.ac = activation_functions[ac_func]
         if aco_func == 'gumbel':
@@ -108,12 +108,7 @@ class Classifier_01(nn.Module):
             self.hidden.append(nn.Linear(hidden_size, hidden_size))
         self.hidden = nn.ModuleList(self.hidden)
         self.output = nn.Linear(hidden_size, num_classes)
-        
-        self.train = train
         self.soft = activation_functions['softmax']
-    
-    def mode_train(self): self.train = True
-    def mode_eval(self): self.train = False
         
     def forward(self, x):
         out = self.input(x)
@@ -122,7 +117,7 @@ class Classifier_01(nn.Module):
             out = layer(out)
             out = self.ac(out)
         out = self.output(out)
-        if self.train:
+        if self.training:
             out = self.aco(out)
         else:
             out = self.soft(out)
@@ -173,7 +168,7 @@ def new_D(P,input_size,hidden_size):
 
 def new_C(P,input_size,hidden_size,num_classes):
     if P.get('C_no') == 1:
-        C = Classifier_01(input_size, hidden_size, num_classes, hidden_no=P.get('C_hidden_no'), ac_func=P.get('C_ac_func'), aco_func=P.get('C_aco_func'), hard=True, tau=P.get('C_tau'), train=True)
+        C = Classifier_01(input_size, hidden_size, num_classes, hidden_no=P.get('C_hidden_no'), ac_func=P.get('C_ac_func'), aco_func=P.get('C_aco_func'), hard=True, tau=P.get('C_tau'))
     # elif P.get('C_no') == 2:
     #     C = Classifier_02(input_size, hidden_size, num_classes)
     # elif P.get('C_no') == 3:

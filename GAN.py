@@ -5,11 +5,9 @@ import torch
 
 if __package__ is None or __package__ == '':
     import network
-    from log import log
     import preprocessing as pp
 else:
     from . import network
-    from .log import log
     from . import preprocessing as pp
    
     
@@ -32,6 +30,7 @@ def train_Base(P, DL_L, DL_U_iter, DL_V, name=None):
     optimizer_R = network.get_optimiser(P,'C',R.parameters())
     
     for epoch in range(P.get('epochs')):
+        R.train()
         for i, (X1, Y1) in enumerate(DL_L, 1):
             optimizer_R.zero_grad()
             PR = R(X1)
@@ -41,9 +40,9 @@ def train_Base(P, DL_L, DL_U_iter, DL_V, name=None):
             
         if (epoch+1)%P.get('save_step') == 0:
             idx = int(epoch/P.get('save_step'))+1
-            R.mode_eval()
-            mat_accuracy[0,idx] = np.mean([get_accuracy(R(XV), YV) for XV, YV in DL_V])
-            R.mode_train()
+            R.eval()
+            with torch.no_grad():
+                mat_accuracy[0,idx] = np.mean([get_accuracy(R(XV), YV) for XV, YV in DL_V])
             
     return mat_accuracy, R
             
@@ -53,7 +52,7 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
     #  Parameters
     # -------------------
     
-    #log(str(P),name=P.get('log_name'))
+    #P.log(str(P))
     if name is None:
         name = P.get('name')
     plt.close('all')
@@ -71,11 +70,11 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
         D_Loss.cuda()
         C_Loss.cuda()
         floatTensor = torch.cuda.FloatTensor
-        #log("CUDA Training.",name=P.get('log_name'))
+        #P.log("CUDA Training.")
         #network.clear_cache()
     else:
         floatTensor = torch.FloatTensor
-        #log("CPU Training.",name=P.get('log_name'))
+        #P.log("CPU Training.")
 
     # -------------------
     #  Accuracy
@@ -106,6 +105,8 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
         running_loss_G = 0.0
         running_loss_D = 0.0
         running_loss_C = 0.0
+        
+        G.train();D.train();C.train();
         
         """
               X1, P1      - Labelled Data,      predicted Labels (C)                             | Regular training of classifier
@@ -240,7 +241,7 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
         
         if P.get('print_epoch'):
             logString = "[Epoch %d/%d] [G loss: %f] [D loss: %f] [C loss: %f]"%(epoch+1, P.get('epochs'), running_loss_G/(i), running_loss_D/(i), running_loss_C/(i))
-            log(logString,save=False,name=P.get('log_name'))
+            P.log(logString,save=False)
         
         if (epoch+1)%P.get('save_step') == 0:
             idx = int(epoch/P.get('save_step'))+1
@@ -250,39 +251,38 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             acc_D_vs_G = []
             acc_C_real = []
             
-            C.mode_eval()
-                
-            for data in DL_V:
-                
-                XV, YV = data
+            G.eval();D.eval();C.eval();
             
-                # Predict labels
-                PV = C(XV)
+            with torch.no_grad():
+                for data in DL_V:
+                    
+                    XV, YV = data
                 
-                # Generate Synthetic Data
-                Z = floatTensor(np.random.normal(0, 1, (YV.shape[0], P.get('noise_shape'))))
-                IV = torch.cat((Z,YV),dim=1)
-                XG = G(IV)
+                    # Predict labels
+                    PV = C(XV)
+                    
+                    # Generate Synthetic Data
+                    Z = floatTensor(np.random.normal(0, 1, (YV.shape[0], P.get('noise_shape'))))
+                    IV = torch.cat((Z,YV),dim=1)
+                    XG = G(IV)
+                    
+                    # Estimate Discriminator Accuracy
+                    WV1 = torch.cat((XV,YV),dim=1)
+                    WV2 = torch.cat((XV,PV),dim=1)
+                    WV3 = torch.cat((XG,YV),dim=1)
+                    RV1 = floatTensor(WV1.shape[0],1).fill_(1.0)
+                    FV2 = floatTensor(WV2.shape[0],1).fill_(0.0)
+                    FV3 = floatTensor(WV3.shape[0],1).fill_(0.0)
+                    
+                    AV1 = D(WV1)
+                    AV2 = D(WV2)
+                    AV3 = D(WV3)
+                    
+                    acc_D_real.append(get_accuracy(AV1,RV1))
+                    acc_D_vs_C.append(get_accuracy(AV2,FV2))
+                    acc_D_vs_G.append(get_accuracy(AV3,FV3))
                 
-                # Estimate Discriminator Accuracy
-                WV1 = torch.cat((XV,YV),dim=1)
-                WV2 = torch.cat((XV,PV),dim=1)
-                WV3 = torch.cat((XG,YV),dim=1)
-                RV1 = floatTensor(WV1.shape[0],1).fill_(1.0)
-                FV2 = floatTensor(WV2.shape[0],1).fill_(0.0)
-                FV3 = floatTensor(WV3.shape[0],1).fill_(0.0)
-                
-                AV1 = D(WV1)
-                AV2 = D(WV2)
-                AV3 = D(WV3)
-                
-                acc_D_real.append(get_accuracy(AV1,RV1))
-                acc_D_vs_C.append(get_accuracy(AV2,FV2))
-                acc_D_vs_G.append(get_accuracy(AV3,FV3))
-            
-                acc_C_real.append(get_accuracy(PV, YV))
-                
-            C.mode_train()
+                    acc_C_real.append(get_accuracy(PV, YV))
                 
             acc_D_real = np.mean(acc_D_real)
             acc_D_vs_C = np.mean(acc_D_vs_C)
@@ -299,7 +299,7 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             mat_accuracy[0,idx] = acc_G
 
             logString = "[%s] [Epoch %d/%d] [G acc: %f] [D acc: %f | vs Real: %f | vs G: %f | vs C: %f] [C acc: %f | vs Real: %f | vs D: %f]"%(name, epoch+1, P.get('epochs'), acc_G, acc_D, acc_D_real, acc_D_vs_G, acc_D_vs_C, acc_C, acc_C_real, acc_C_vs_D)
-            log(logString,save=True,name=P.get('log_name')) 
+            P.log(logString,save=True) 
                    
     # -------------------
     #  Post Training

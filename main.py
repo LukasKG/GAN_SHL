@@ -27,19 +27,6 @@ else:
     from .plot_confusion_matrix import plot_confusion_matrix
     from . import preprocessing as pp
 
-
-def get_Data(P):
-    F = ds.load_data(P)
-    
-    if P.get('Cross_val') == 'user':
-        return [F[P.get('User_L')-1], F[P.get('User_U')-1], F[P.get('User_V')-1]]
-    
-     
-    if P.get('Cross_val') == 'none':
-        X = np.concatenate([X for X,_ in F])
-        Y = np.concatenate([Y for _,Y in F])
-        return [[X,Y], [X,Y], [X,Y]]
-
 def hyperopt_C(eval_step=25,max_evals=None):
     import network
     epochs = 100
@@ -85,7 +72,7 @@ def hyperopt_C(eval_step=25,max_evals=None):
     }
 
 
-    DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, get_Data(P)) 
+    DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, ds.ds.get_data(P)) 
     input_size, output_size = P.get_IO_shape()
     
     if P.get('CUDA') and torch.cuda.is_available():
@@ -114,8 +101,9 @@ def hyperopt_C(eval_step=25,max_evals=None):
                     loss = C_Loss(P1, Y1)
                     loss.backward()
                     optimizer_C.step()
-            C.mode_eval()
-            acc_mat[run] = np.mean([GAN.get_accuracy(C(XV), YV) for (XV, YV) in DL_V])
+            C.eval()
+            with torch.no_grad():
+                acc_mat[run] = np.mean([GAN.get_accuracy(C(XV), YV) for (XV, YV) in DL_V])
               
         acc = np.mean(acc_mat)
         P0.log(f"Perf: {acc:.5f} - Checked Params: "+", ".join([str(key)+' = '+str(val) for key,val in args.items()]),name='hyperopt')
@@ -146,7 +134,7 @@ def pytorch_baseline(P):
     P.set('CUDA',False)
     P.set('C_aco_func','gumbel')
    
-    DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, get_Data(P)) 
+    DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, ds.get_data(P)) 
     
     input_size, output_size = P.get_IO_shape()
     C = network.new_C(P,input_size=input_size,hidden_size=P.get('C_hidden'),num_classes=output_size)
@@ -172,7 +160,7 @@ def pytorch_baseline(P):
     
     for epoch in range(200):
         running_loss_C = 0.0
-        C.mode_train()
+        C.train()
         for i, (X1, Y1) in enumerate(DL_L, 1):
             optimizer_C.zero_grad()
             P1 = C(X1)
@@ -181,16 +169,17 @@ def pytorch_baseline(P):
             optimizer_C.step()
             running_loss_C += loss.item()
         loss_C = running_loss_C/len(DL_L) 
-        acc_C_G = np.mean([GAN.get_accuracy(C(XV), YV) for (XV, YV) in DL_V])
-        C.mode_eval()
-        acc_C_S = np.mean([GAN.get_accuracy(C(XV), YV) for (XV, YV) in DL_V])
+        with torch.no_grad():
+            acc_C_G = np.mean([GAN.get_accuracy(C(XV), YV) for (XV, YV) in DL_V])
+            C.eval()
+            acc_C_S = np.mean([GAN.get_accuracy(C(XV), YV) for (XV, YV) in DL_V])
         P.log(f"Epoch {epoch}: Loss = {loss_C:.4f} | Accuracy Gumbel = {acc_C_G:.4f} | Accuracy Softmax = {acc_C_S:.4f}")
 
    
 def sklearn_baseline(P):
     from sklearn.neural_network import MLPClassifier as MLP
     
-    F = get_Data(P)
+    F = ds.get_data(P)
     
     x_train, y_train = F[0]
     x_test, y_test = F[2]
@@ -215,7 +204,7 @@ def hyperopt_Search(P,param_space,eval_step=25,max_evals=None):
     else:
         P.log("CPU Training.",name='hyperopt')
     
-    DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, get_Data(P))
+    DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, ds.get_data(P))
     
     def obj(args):
         P0 = P.copy()
@@ -223,9 +212,10 @@ def hyperopt_Search(P,param_space,eval_step=25,max_evals=None):
         
         mat_acc = np.empty((P0.get('runs')))
         for run in range(P0.get('runs')):
-            _, _, _, C, _ = GAN.train_GAN(P0, DL_L, DL_U_iter, DL_V, name=P0.get('name')+'_%d'%run)
-            C.mode_eval()
-            mat_acc[run] = np.mean([GAN.get_accuracy(C(XV),YV) for XV, YV in DL_V])
+            _, _, _, C = GAN.train_GAN(P0, DL_L, DL_U_iter, DL_V, name=P0.get('name')+'_%d'%run)
+            C.eval()
+            with torch.no_grad():
+                mat_acc[run] = np.mean([GAN.get_accuracy(C(XV),YV) for XV, YV in DL_V])
             
         acc = np.mean(mat_acc)
         P.log(f"Perf: {acc:.5f} - Checked Params: "+", ".join([str(key)+' = '+str(val) for key,val in args.items()]),name='hyperopt')
@@ -260,10 +250,10 @@ def get_Results(P,P_val=None):
     else:
         P.log("CPU Training.")
     
-    DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, get_Data(P))
+    DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, ds.get_data(P))
     
     if P_val is not None:
-        _, _, DL_V = pp.get_all_dataloader(P_val, get_Data(P_val))
+        _, _, DL_V = pp.get_all_dataloader(P_val, ds.get_data(P_val))
     
     ACC = None
     YF = None
@@ -287,26 +277,28 @@ def get_Results(P,P_val=None):
         else:
             ACC = np.concatenate((ACC, np.expand_dims(mat_accuracy,axis=2)),axis=2)
         
-        C.mode_eval()
+        C.eval()
         if P.get('R_active'):
-            R.mode_eval()
-        for XV, YV in DL_V:
+            R.eval()
             
-            # Classify Validation data
-            PC = C(XV)
-
-            if YF == None:
-                YF = YV
-                PF = PC
-            else:
-                YF = torch.cat((YF, YV), 0)
-                PF = torch.cat((PF, PC), 0)
+        with torch.no_grad():
+            for XV, YV in DL_V:
                 
-            if P.get('R_active'):
-                if RF == None:
-                    RF = R(XV)
+                # Classify Validation data
+                PC = C(XV)
+    
+                if YF == None:
+                    YF = YV
+                    PF = PC
                 else:
-                    RF = torch.cat((RF, R(XV).detach()), 0)
+                    YF = torch.cat((YF, YV), 0)
+                    PF = torch.cat((PF, PC), 0)
+                    
+                if P.get('R_active'):
+                    if RF == None:
+                        RF = R(XV)
+                    else:
+                        RF = torch.cat((RF, R(XV).detach()), 0)
         
     return ACC, (YF, RF, PF)
 
@@ -522,7 +514,11 @@ def main():
         batch_size = 21
         ) 
     
-    #hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
+    # hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
+    # evaluate(P_test)
+    # P_test.set_keys(
+    #     CUDA = False,
+    #     )
     # evaluate(P_test)
     
     # P_val = P.copy()
