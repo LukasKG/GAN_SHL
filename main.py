@@ -498,33 +498,32 @@ def main():
         User_U = 2,
         User_V = 3,
         
-        CB1 = 0.0021436223690857103, 
-        CLR = 0.0003761140344974288, 
-        C_ac_func = 'relu', 
-        C_hidden = 103, 
+        CB1 = 0.022687365760039192, 
+        CLR = 0.0011569226643110444, 
+        C_ac_func = 'sig', 
+        C_hidden = 138, 
         C_hidden_no = 2, 
         C_optim = 'AdamW', 
-        C_tau = 1.2077957988503734, 
+        C_tau = 1.456271875874318,
         
-        DB1 = 0.010971248308396573, 
-        DLR = 0.008547884110448033, 
-        D_ac_func = 'leaky', 
-        D_hidden = 743, 
-        D_hidden_no = 1, 
+        DB1 = 0.027028929852659037, 
+        DLR = 0.01174597928660055, 
+        D_ac_func = 'relu', 
+        D_hidden = 931, 
+        D_hidden_no = 0, 
         D_optim = 'SGD', 
-        
-        GB1 = 0.06526828762281653, 
-        GLR = 0.00018303028039262916, 
+        GB1 = 0.002328454596567183, 
+        GLR = 0.007870570011454539, 
         G_ac_func = 'leaky20', 
-        G_hidden = 337, 
-        G_hidden_no = 3, 
+        G_hidden = 25, 
+        G_hidden_no = 1, 
         G_optim = 'SGD', 
         
-        batch_size = 31
+        batch_size = 161
         ) 
     
     #hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
-    #evaluate(P_test)
+    # evaluate(P_test)
     # P_test.set_keys(
     #     CUDA = False,
     #     )
@@ -541,6 +540,7 @@ def main():
         name = 'eval_C_Complete',
         C_basic_train = True,
         )
+    evaluate(P,P_val)
     
     hyperopt_Search(P_search,param_space)
     

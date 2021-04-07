@@ -17,22 +17,14 @@ def get_accuracy(Y_pred,Y_true):
     else:
         return (Y_pred.max(dim=1)[1] == Y_true.max(dim=1)[1]).sum().item() / Y_true.size(0)
 
-def cross_entropy_one_hot(input, target):
-  _, labels = target.max(dim=1)
-  return torch.nn.CrossEntropyLoss()(input, labels)
-
-def cross_entropy_one_hot_cuda(input, target):
-  _, labels = target.max(dim=1)
-  return torch.nn.CrossEntropyLoss().cuda()(input, labels)
-
 def train_Base(P, DL_L, DL_U_iter, DL_V, name=None):   
     if name is None:
         name = P.get('name')
     
-    R_Loss = cross_entropy_one_hot
+    R_Loss = network.CrossEntropyLoss_OneHot()
         
     if P.get('CUDA') and torch.cuda.is_available():
-        R_Loss = cross_entropy_one_hot_cuda
+        R_Loss.cuda()
 
     mat_accuracy = np.zeros((1, int(P.get('epochs')/P.get('save_step'))+1))
     R = network.load_Ref(P,name)  
@@ -72,11 +64,11 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
     # -------------------
     
     D_Loss = torch.nn.BCELoss()
-    C_Loss = cross_entropy_one_hot
+    C_Loss = network.CrossEntropyLoss_OneHot()
 
     if P.get('CUDA') and torch.cuda.is_available():
         D_Loss.cuda()
-        C_Loss = cross_entropy_one_hot_cuda
+        C_Loss.cuda()
         floatTensor = torch.cuda.FloatTensor
         #P.log("CUDA Training.")
         #network.clear_cache()

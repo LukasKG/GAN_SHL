@@ -184,6 +184,28 @@ def new_C(P,input_size,hidden_size,num_classes):
     return C
 
 # -------------------
+#  Loss
+# -------------------
+
+from torch.nn.modules.loss import _WeightedLoss
+from torch import Tensor
+from typing import Optional
+
+class CrossEntropyLoss_OneHot(_WeightedLoss):
+    __constants__ = ['ignore_index', 'reduction']
+    ignore_index: int
+    def __init__(self, weight: Optional[Tensor] = None, size_average=None, ignore_index: int = -100,
+                 reduce=None, reduction: str = 'mean') -> None:
+            super(CrossEntropyLoss_OneHot, self).__init__(weight, size_average, reduce, reduction)
+            self.ignore_index = ignore_index
+
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        assert self.weight is None or isinstance(self.weight, Tensor)
+        _, labels = target.max(dim=1)
+        return F.cross_entropy(input, labels, weight=self.weight,
+                               ignore_index=self.ignore_index, reduction=self.reduction)
+
+# -------------------
 #  Optimiser
 # -------------------
 
