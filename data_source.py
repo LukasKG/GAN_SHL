@@ -230,7 +230,7 @@ def save_processed(F,path):
 def process_data(P,V=None):
     if V is None:
         V = read_data(P)
-    
+
     F = [slidingWindow(P,X,Y) for (X,Y) in V]
     
     return F
@@ -304,15 +304,20 @@ if __name__ == "__main__":
     from params import Params
     
     dataset = 'SHL'
-    #dataset = 'Short'
+    dataset = 'Short'
+    dataset = 'Test'
     
     FX_sel = 'basic'
-    #FX_sel = 'all'
+    FX_sel = 'auto_correlation'
+    FX_sel = 'all'
     
     labels = None
     #labels = [1,2,3]
     
-    P = Params(dataset=dataset,labels=labels,FX_sel=FX_sel)
+    magnitude = True
+    #magnitude = False
+    
+    P = Params(dataset=dataset,labels=labels,FX_sel=FX_sel,magnitude=magnitude)
     
     F = load_data(P)
     

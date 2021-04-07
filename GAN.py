@@ -102,9 +102,10 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
 
     for epoch in range(P.get('epochs')):
         
-        running_loss_G = 0.0
-        running_loss_D = 0.0
-        running_loss_C = 0.0
+        if P.get('print_epoch'):
+            running_loss_G = 0.0
+            running_loss_D = 0.0
+            running_loss_C = 0.0
         
         G.train();D.train();C.train();
         
@@ -119,9 +120,10 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
         """
         for i, (X1, Y1) in enumerate(DL_L, 1):
             
-            loss_G = []
-            loss_D = []
-            loss_C = []
+            if P.get('print_epoch'):
+                loss_G = []
+                loss_D = []
+                loss_C = []
             
             # -------------------
             #  Train the classifier on real samples
@@ -133,9 +135,10 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
                 optimizer_C.zero_grad()
                 P1 = C(X1)
                 loss = C_Loss(P1, Y1)
-                loss_C.append(loss)
                 loss.backward()
                 optimizer_C.step()
+                if P.get('print_epoch'):
+                    loss_C.append(loss)
                 
             # -------------------
             #  Train the discriminator to label real samples
@@ -143,9 +146,10 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             optimizer_D.zero_grad()
             A1 = D(W1)
             loss = D_Loss(A1, R1)
-            loss_D.append(loss)
             loss.backward()
             optimizer_D.step()
+            if P.get('print_epoch'):
+                loss_D.append(loss)
             
             # -------------------
             #  Classify unlabelled data
@@ -161,9 +165,10 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             A2 = D(W2)
             R2 = floatTensor(W2.shape[0], 1).fill_(1.0)
             loss = D_Loss(A2, R2)
-            loss_C.append(loss)
             loss.backward()
             optimizer_C.step()
+            if P.get('print_epoch'):
+                loss_C.append(loss)
             
             # -------------------
             #  Train the discriminator to label predicted samples
@@ -172,9 +177,10 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             A2 = D(W2.detach())
             F2 = floatTensor(W2.shape[0], 1).fill_(0.0)
             loss = D_Loss(A2, F2)
-            loss_D.append(loss)
             loss.backward()
             optimizer_D.step()
+            if P.get('print_epoch'):
+                loss_D.append(loss)
             
             # -------------------
             #  Train the discriminator to label fake positive samples
@@ -187,9 +193,10 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             A4 = D(W4.detach())
             R4 = floatTensor(W4.shape[0], 1).fill_(1.0)
             loss = D_Loss(A4, R4)
-            loss_D.append(loss)
             loss.backward()
             optimizer_D.step()
+            if P.get('print_epoch'):
+                loss_D.append(loss)
             
             # -------------------
             #  Create Synthetic Data
@@ -213,9 +220,10 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             A3 = D(W3)
             R3 = floatTensor(W3.shape[0], 1).fill_(1.0)
             loss = D_Loss(A3, R3)
-            loss_G.append(loss)
             loss.backward()
             optimizer_G.step()
+            if P.get('print_epoch'):
+                loss_G.append(loss)
             
             # -------------------
             #  Train the discriminator to label synthetic samples
@@ -224,16 +232,18 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             A3 = D(W3.detach())
             F3 = floatTensor(W3.shape[0], 1).fill_(0.0)
             loss = D_Loss(A3, F3)
-            loss_D.append(loss)
             loss.backward()
             optimizer_D.step()
+            if P.get('print_epoch'):
+                loss_D.append(loss)
             
             # -------------------
             #  Calculate overall loss
             # -------------------
-            running_loss_G += np.mean([loss.item() for loss in loss_G])
-            running_loss_D += np.mean([loss.item() for loss in loss_D])
-            running_loss_C += np.mean([loss.item() for loss in loss_C])
+            if P.get('print_epoch'):
+                running_loss_G += np.mean([loss.item() for loss in loss_G])
+                running_loss_D += np.mean([loss.item() for loss in loss_D])
+                running_loss_C += np.mean([loss.item() for loss in loss_C])
         
         # -------------------
         #  Post Epoch

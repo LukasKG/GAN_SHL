@@ -91,12 +91,12 @@ if __package__ is None or __package__ == '':
     # uses current directory visibility
     import data_source as ds
     from log import log as writeLog
-    from sliding_window import get_FX_list
+    from sliding_window import get_FX_list, get_FX_list_len
 else:
     # uses current package visibility
     from . import data_source as ds
     from .log import log as writeLog
-    from .sliding_window import get_FX_list
+    from .sliding_window import get_FX_list, get_FX_list_len
 
 DEFAULT_PARAMS = {
         'name'            : "Missing_Name",             # Name to save files under
@@ -216,7 +216,7 @@ class Params:
     
     def get_IO_shape(self):
         ''' Returns the input shape and number of output classes of a dataset '''
-        X = len(self.get_channel_list()) * len(get_FX_list(self))
+        X = len(self.get_channel_list()) * get_FX_list_len(get_FX_list(self))
         Y = len(self.get('labels'))
         return [X,Y]  
 

@@ -4,6 +4,10 @@ from scipy.stats import kurtosis, skew, mode
 import numpy as np
 import pandas as pd
 
+# Raise exception for warnings
+import warnings
+warnings.filterwarnings('error', category=RuntimeWarning)
+
 if __package__ is None or __package__ == '':
     # uses current directory visibility
     from log import log
@@ -11,17 +15,36 @@ else:
     # uses current package visibility
     from .log import log
 
-# Energy
-def energy(data,*args,**kwargs):
-    return np.dot(data.T,data)
+# -------------------
+#  Feature Extraction
+# -------------------
 
-# Zero Crossing Count
 def zcc(data,*args,**kwargs):
+    ''' Zero crossing count '''
     return np.nonzero(np.diff(data > 0))[0].shape[0]
 
-# Mean Crossing Count
 def mcc(data,*args,**kwargs):
+    ''' Mean crossing count '''
     return np.nonzero(np.diff((data-np.mean(data)) > 0))[0].shape[0]
+
+def energy(data,*args,**kwargs):
+    ''' Energy of a matrix A*A.T '''
+    return np.dot(data.T,data)
+
+def autocorr(data, min_delay=10):
+    ''' Statistical correlation with a lag of t '''
+    result = np.correlate(data, data,mode='full')
+    result = result[min_delay+result.shape[0]//2:]
+    idx = np.argmax(result)
+    return np.array([result[idx], idx])
+
+def IQR(data,q=[75,25]):
+    ''' Interquartile range '''
+    return np.subtract(*np.percentile(data, q))
+
+# -------------------
+#  List of Features
+# -------------------
 
 def val_FX_list(FX_list):
     if not isinstance(FX_list,list):
@@ -32,23 +55,40 @@ def val_FX_list(FX_list):
 def get_FX_list(P):
     return val_FX_list(FEATURES[P.get('FX_sel')])
 
+def get_FX_list_len(FX_list):
+    return sum(num for _,_,num in [FXdict[Fx] for Fx in FX_list])
+
 FXdict = {
-  "mean": (np.mean,None),
-  "std": (np.std,None),
+  "mean": (np.mean,None,1),
+  "std": (np.std,None,1),
   #"zcr": (zcc,None),
-  "mcr": (mcc,None),
-  #"auto_correlation": (lambda x:1,None),
-  "kurtosis": (kurtosis,None),
-  "skew": (skew,None),
-  "min": (np.min,None),
-  "max": (np.max,None),
-  "median": (np.median,None),
+  "mcr": (mcc,None,1),
+  "energy": (energy,None,1),
+  "auto_correlation": (autocorr,1,2),
+  "kurtosis": (kurtosis,None,1),
+  "skew": (skew,None,1),
 }
+
+QUARTILES = [0,5,10,25,50,75,90,95,100]
+
+# Append quartiles
+for q in QUARTILES:
+    FXdict["Q%d"%q] = (np.percentile,q,1)
+
+for i in range(len(QUARTILES)-1):
+    for j in range(i+1,len(QUARTILES)):
+        FXdict["IQR_%d_%d"%(QUARTILES[i], QUARTILES[j])] = (IQR,[QUARTILES[j], QUARTILES[i]],1)
+    
 
 FEATURES = {
     'basic': ['mean','median','std','mcr','kurtosis','skew'],
     'all': [*FXdict],
+    'auto_correlation': ['auto_correlation'],
     }
+
+# -------------------
+#  Padding
+# -------------------
 
 def zerol(data,winsize):
     return np.concatenate((np.zeros((data.shape[0],winsize-1)),data),axis=1)
@@ -107,18 +147,15 @@ def slidingWindow(P,data,label=None):
         return None
     
     if colNo > rowNo:
-        column = True
         data = np.transpose(data)
-    else:
-        column = False   
 
     sdata = data.shape[1]                   # size of the time series
     s = np.ceil(sdata/jumpsize).astype(int) # size of output timeline after sliding window
-    FXnr = len(FX_list)                     # number of output features
+    FXnr = get_FX_list_len(FX_list)                 # number of output features
     Cnr = data.shape[0]                     # number of output channels
     
     # Create the output data
-    X = np.empty((Cnr,FXnr,s))
+    X = np.empty((s,Cnr,FXnr))
     if label is not None:
         label = make_numpy(label)
         Y = np.empty((s))
@@ -153,15 +190,18 @@ def slidingWindow(P,data,label=None):
             datawin = data[j,w:w+winsize]
             
             # Calculate all features
-            for i,FX_name in enumerate(FX_list):
+            i=0
+            for FX_name in FX_list:
                 # Load Feature function
-                FX, FXOpts = FXdict[FX_name]
+                FX, FXOpts, L = FXdict[FX_name]
                 
                 # Compute the feature
                 fx = FX(datawin,FXOpts)
 
                 # Update the output vector
-                X[j,i,wi] = fx
+                X[wi,j,i:i+L] = fx
+                
+                i+=L
                 
         if label is not None:
             Y[wi] = mode(label[w:w+winsize])[0]       
@@ -169,8 +209,6 @@ def slidingWindow(P,data,label=None):
         # increase output index
         wi += 1
 
-    if column:
-        X = X.transpose()
     
     if label is not None:
         return X.squeeze(), Y
@@ -178,10 +216,20 @@ def slidingWindow(P,data,label=None):
         return X.squeeze()
     
 if __name__ == "__main__":
-    data = np.arange(10)+1
-    print(data)
-    print(zcc(data))
-    print(mcc(data))
-    print(energy(data))
-    FX, FXOpts = FXdict['auto_correlation']
-    print(FX(data))
+    data = np.arange(11)+1
+    data = np.array([1,1,1,1,1,1,1,1,1,1,2,3,4,5]*10)
+    print("Data:",data)
+    for name, (FX, FXOpts, num) in FXdict.items():
+        print(name+':',FX(data,FXOpts),num)
+
+    data = [1,2,3,2,1,2,3,2,1,2,3,2,1,2]
+    result = np.correlate(data, data,mode='full')
+    result = result[result.shape[0]//2:]
+    print(result)
+    
+    print(autocorr(data, min_delay=5))
+
+    from params import Params
+    
+    P = Params(FX_sel = 'auto_correlation',winsize=5,jumpsize=5)
+    print(slidingWindow(P,data,label=None))

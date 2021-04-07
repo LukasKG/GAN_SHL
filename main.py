@@ -416,7 +416,7 @@ def main():
     }
     
     P_search = Params(
-        name = 'Hyper_GAN',
+        name = 'Hyper_GAN_2.0',
         dataset = 'SHL',
         CUDA = args.CUDA,
         
@@ -449,6 +449,7 @@ def main():
         save_step = 1,
         runs = 1,
         
+        FX_sel = 'all',
         Cross_val = 'user',
         
         C_basic_train = False,
@@ -522,27 +523,40 @@ def main():
         batch_size = 161
         ) 
     
-    #hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
-    # evaluate(P_test)
-    # P_test.set_keys(
-    #     CUDA = False,
-    #     )
-    # evaluate(P_test)
+    TEST = False
+    EVAL = True
+    SEARCH = True
     
-    P_val = P.copy()
-    P_val.set_keys(
-        sample_no = None,
-        undersampling = False,
-        oversampling = False,
-        )
-    evaluate(P,P_val)
-    P.set_keys(
-        name = 'eval_C_Complete',
-        C_basic_train = True,
-        )
-    evaluate(P,P_val)
+    if TEST:
+        P_test.set_keys(CUDA = True,)
+        evaluate(P_test)
+        hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
+        P_test.set_keys(CUDA = False,)
+        evaluate(P_test)
+        hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
     
-    hyperopt_Search(P_search,param_space)
+    if EVAL:
+        P_val = P.copy()
+        P_val.set_keys(
+            sample_no = None,
+            undersampling = False,
+            oversampling = False,
+            )
+
+        P.set_keys(
+            name = 'eval_C_GAN',
+            C_basic_train = False,
+            )
+        evaluate(P,P_val)
+        
+        P.set_keys(
+            name = 'eval_C_Complete',
+            C_basic_train = True,
+            )
+        evaluate(P,P_val)
+
+    if SEARCH:
+        hyperopt_Search(P_search,param_space)
     
     # P.set_keys(
     #     name = 'eval_gumbel',
