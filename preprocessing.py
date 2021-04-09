@@ -2,7 +2,7 @@
 from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import NearMiss
 import numpy as np
-from sklearn import preprocessing
+from sklearn import preprocessing,decomposition
 import torch
 
 # if __package__ is None or __package__ == '':
@@ -77,6 +77,48 @@ def get_tensor(*args,cuda=True):
         res.append(X.to(device))
     return res
 
+def perform_preprocessing(P, datasets, sample_no=-1):
+    if sample_no == -1:
+        sample_no = P.get('sample_no')
+    assert sample_no is None or isinstance(sample_no,int) or isinstance(sample_no,tuple) and len(sample_no)==len(datasets)
+    
+    X_full = np.concatenate([X for X, _ in datasets])
+    
+    ''' Perform standardization '''
+    scaler = preprocessing.StandardScaler(copy=False)
+    X_full = scaler.fit_transform(X_full)
+    
+    ''' Perform principle component analysis '''
+    if P.get('PCA_n_components') is not None:
+        pca = decomposition.PCA(n_components=P.get('PCA_n_components'), copy=False)
+        X_full = pca.fit_transform(X_full)
+    
+    ''' Scale data between -1 and 1 to fit the Generators tanh output '''
+    scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1), copy=False)
+    X_full = scaler.fit_transform(X_full)
+    
+    F = []
+    idx = 0
+    for i,(_,Y) in enumerate(datasets):
+        X = X_full[idx:idx+Y.shape[0]]
+        idx+=Y.shape[0]
+
+        if sample_no is not None:
+            if isinstance(sample_no,tuple): no = sample_no[i]
+            else: no = sample_no
+            samples = {k:no for k in P.get('labels')}
+            X,Y = over_sampling(P, X, Y, samples)
+            X,Y = under_sampling(P, X, Y)
+            
+        elif P.get('undersampling'):
+            X, Y = under_sampling(P, X, Y)
+            
+        elif P.get('oversampling'):
+            X, Y = over_sampling(P, X, Y)
+            
+        F.append([X,Y])
+    return F
+
 class Permanent_Dataloader:
     def __init__(self, dataloader):
         self.dataloader = dataloader
@@ -118,35 +160,8 @@ def get_perm_dataloader(P,X,Y=None,batch_size=None):
     return perm_dataloader
 
 def get_all_dataloader(P, datasets, sample_no=-1):
-    if sample_no == -1:
-        sample_no = P.get('sample_no')
-    assert sample_no is None or isinstance(sample_no,int) or isinstance(sample_no,tuple) and len(sample_no)==len(datasets)
-    
-    
-    ''' Scale data between -1 and 1 to fit the Generators tanh output '''
-    scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1), copy=True)
-    scaler.fit(np.concatenate([X for X, _ in datasets]))
-    
-    F = []
-    for i,(X,Y) in enumerate(datasets):
+    F = perform_preprocessing(P, datasets, sample_no)
 
-        X = scaler.transform(X)
-
-        if sample_no is not None:
-            if isinstance(sample_no,tuple): no = sample_no[i]
-            else: no = sample_no
-            samples = {k:no for k in P.get('labels')}
-            X,Y = over_sampling(P, X, Y, samples)
-            X,Y = under_sampling(P, X, Y)
-            
-        elif P.get('undersampling'):
-            X, Y = under_sampling(P, X, Y)
-            
-        elif P.get('oversampling'):
-            X, Y = over_sampling(P, X, Y)
-            
-        F.append([X,Y])
-     
     DL_L = get_dataloader(P, F[0][0], labels_to_one_hot(P,F[0][1]))
     DL_U_iter = get_perm_dataloader(P, F[1][0], labels_to_one_hot(P,F[1][1]))
     DL_V = get_dataloader(P, F[2][0], labels_to_one_hot(P,F[2][1]), batch_size=1024) 

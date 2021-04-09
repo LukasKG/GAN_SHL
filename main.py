@@ -131,14 +131,14 @@ def pytorch_baseline(P):
     import torch
     import network
     
-    P.set('CUDA',False)
+    #P.set('CUDA',False)
     P.set('C_aco_func','gumbel')
    
     DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, ds.get_data(P)) 
     
     input_size, output_size = P.get_IO_shape()
     C = network.new_C(P,input_size=input_size,hidden_size=P.get('C_hidden'),num_classes=output_size)
-    C_Loss = torch.nn.BCELoss()
+    C_Loss = network.CrossEntropyLoss_OneHot()
     
     
     optim = 'Adam'
@@ -152,6 +152,7 @@ def pytorch_baseline(P):
         
     if P.get('CUDA') and torch.cuda.is_available():
         device = torch.device('cuda')
+        C.cuda()
         C_Loss.cuda()
         P.log("Cuda Training")
     else:
@@ -173,26 +174,37 @@ def pytorch_baseline(P):
             acc_C_G = np.mean([GAN.get_accuracy(C(XV), YV) for (XV, YV) in DL_V])
             C.eval()
             acc_C_S = np.mean([GAN.get_accuracy(C(XV), YV) for (XV, YV) in DL_V])
-        P.log(f"Epoch {epoch}: Loss = {loss_C:.4f} | Accuracy Gumbel = {acc_C_G:.4f} | Accuracy Softmax = {acc_C_S:.4f}")
+        P.log(f"Epoch {epoch+1}: Loss = {loss_C:.4f} | Accuracy Gumbel = {acc_C_G:.4f} | Accuracy Softmax = {acc_C_S:.4f}")
 
    
 def sklearn_baseline(P):
     from sklearn.neural_network import MLPClassifier as MLP
-    
-    F = ds.get_data(P)
+    from sklearn.ensemble import RandomForestClassifier
+
+    F = pp.perform_preprocessing(P, ds.get_data(P))
     
     x_train, y_train = F[0]
     x_test, y_test = F[2]
     
-    clf = MLP(hidden_layer_sizes=(100,100),max_iter=500)
+    mlp = MLP(hidden_layer_sizes=(100,100),max_iter=500)
     
-    clf.fit(x_train, y_train.ravel())
+    mlp.fit(x_train, y_train.ravel())
     
-    score = clf.score(x_train, y_train.ravel())
-    P.log(f"Acc Train: {score:.2f}")
+    score = mlp.score(x_train, y_train.ravel())
+    P.log(f"MLP Acc Train: {score:.2f}")
     
-    score = clf.score(x_test, y_test.ravel())
-    P.log(f"Acc Test: {score:.2f}")
+    score = mlp.score(x_test, y_test.ravel())
+    P.log(f"MLP Acc Test: {score:.2f}")
+    
+    rfc = RandomForestClassifier()
+    
+    rfc.fit(x_train, y_train.ravel())
+    
+    score = rfc.score(x_train, y_train.ravel())
+    P.log(f"RFC Acc Train: {score:.2f}")
+    
+    score = rfc.score(x_test, y_test.ravel())
+    P.log(f"RFC Acc Test: {score:.2f}")
     
 def hyperopt_Search(P,param_space,eval_step=25,max_evals=None):
     P.set('R_active',False)
@@ -238,7 +250,7 @@ def hyperopt_Search(P,param_space,eval_step=25,max_evals=None):
         P.log("Best Params:",name='hyperopt')
         for key,val in space_eval(param_space, best_param).items():
             P.log(str(key)+': '+str(val),name='hyperopt')
-        
+        P.log(f"Best Performance: {abs(max(trials.losses())):.5f} - Copy Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in space_eval(param_space, best_param).items()]),name='hyperopt')
         save_trials(P,trials)
 
     
@@ -398,19 +410,19 @@ def main():
         'CB1'             : hp.loguniform('CB1', np.log(0.001), np.log(0.99)),
         
         'G_ac_func'       : hp.choice('G_ac_func',['relu','leaky','leaky20','sig']),
-        'G_hidden'        : scope.int(hp.qloguniform('G_hidden', np.log(16), np.log(1024), q=1)),
-        'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 0, 4, q=1)), 
+        'G_hidden'        : scope.int(hp.qloguniform('G_hidden', np.log(16), np.log(2048), q=1)),
+        'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 0, 5, q=1)), 
         'G_optim'         : hp.choice('G_optim',['AdamW','SGD']),
         
         'D_ac_func'       : hp.choice('D_ac_func',['relu','leaky','leaky20','sig']),
-        'D_hidden'        : scope.int(hp.qloguniform('D_hidden', np.log(16), np.log(1024), q=1)),
-        'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 0, 4, q=1)), 
+        'D_hidden'        : scope.int(hp.qloguniform('D_hidden', np.log(16), np.log(2048), q=1)),
+        'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 0, 5, q=1)), 
         'D_optim'         : hp.choice('D_optim',['AdamW','SGD']),
         
         'C_ac_func'       : hp.choice('C_ac_func',['relu','leaky','leaky20','sig']),
         #'C_aco_func'      : hp.choice('C_aco_func',['gumbel','hardmax','softmax']),
-        'C_hidden'        : scope.int(hp.qloguniform('C_hidden', np.log(16), np.log(1024), q=1)),
-        'C_hidden_no'     : scope.int(hp.quniform('C_hidden_no', 0, 4, q=1)), 
+        'C_hidden'        : scope.int(hp.qloguniform('C_hidden', np.log(16), np.log(2048), q=1)),
+        'C_hidden_no'     : scope.int(hp.quniform('C_hidden_no', 0, 5, q=1)), 
         'C_optim'         : hp.choice('C_optim',['AdamW','SGD']),
         'C_tau'           : hp.loguniform('C_tau', np.log(0.01), np.log(10.)),
     }
@@ -477,21 +489,23 @@ def main():
         ) 
     
     P = Params(
-        name = 'eval_C_GAN',
+        name = 'evaluation',
         dataset = 'SHL',
         CUDA = args.CUDA,
         
+        #PCA_n_components = 0.85,
+        
         print_epoch = False,
-        epochs = 1000,
+        epochs = 2000,
         save_step = 10,
         runs = 5,
         
         FX_sel = 'all',
-        Cross_val = 'none',
+        Cross_val = 'user',
         
         C_basic_train = False,
         
-        sample_no = 800,
+        sample_no = None,
         undersampling = False,
         oversampling = False,
         
@@ -523,9 +537,15 @@ def main():
         batch_size = 161
         ) 
     
+    F = ds.load_data(P)
+    
     TEST = False
-    EVAL = True
-    SEARCH = True
+    EVAL = False
+    SEARCH = False
+    
+    TEST = True
+    # EVAL = True
+    # SEARCH = True
     
     if TEST:
         P_test.set_keys(CUDA = True,)
@@ -544,14 +564,16 @@ def main():
             )
 
         P.set_keys(
-            name = 'eval_C_GAN',
+            name = 'eval_C_GAN_no_cross',
             C_basic_train = False,
+            Cross_val = 'none',
             )
         evaluate(P,P_val)
         
         P.set_keys(
-            name = 'eval_C_Complete',
+            name = 'eval_C_Complete_user_cross',
             C_basic_train = True,
+            Cross_val = 'user',
             )
         evaluate(P,P_val)
 
@@ -575,7 +597,7 @@ def main():
     # evaluate(P,P_val) 
     
     
-    
+    #F = pp.perform_preprocessing(P, ds.get_data(P))
     #sklearn_baseline(P)
     #pytorch_baseline(P)
     #hyperopt_C(eval_step=25,max_evals=None)

@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
-from scipy.stats import kurtosis, skew, mode
+import decimal
+
 
 import numpy as np
 import pandas as pd
+
+from scipy.fft import fft
+from scipy.signal import find_peaks
+from scipy.stats import kurtosis, skew, mode
+
 
 # Raise exception for warnings
 import warnings
@@ -14,6 +20,10 @@ if __package__ is None or __package__ == '':
 else:
     # uses current package visibility
     from .log import log
+
+def round_half_up(x):
+    ''' round half up instead of to nearest even integer '''
+    return int(decimal.Decimal(x).to_integral_value(rounding=decimal.ROUND_HALF_UP))
 
 # -------------------
 #  Feature Extraction
@@ -42,6 +52,48 @@ def IQR(data,q=[75,25]):
     ''' Interquartile range '''
     return np.subtract(*np.percentile(data, q))
 
+def FFT_peaks(data,*args,**kwargs):
+    ''' Highest FFT Value and Frequency + Ratio between highest and second highest peak '''
+    locs,props = find_peaks(data,height=(None, None))
+    pks = props['peak_heights']
+    
+    idx = pks.argsort()[::-1]
+    pks,locs = pks[idx],locs[idx]
+
+    if pks.shape[0] == 0:
+        pks,locs = data,np.array([0])
+    
+    elif pks.shape[0] == 1:
+        pks = np.concatenate((pks,[np.min(data)]))
+    
+    finterval = 50/(data.shape[0]-1)
+    return np.array([pks[0],locs[0]*finterval,pks[0]/(pks[1]+np.finfo(float).eps)])
+
+def SlideEnergy(x,x2,winlen,skiplen,fs2,finterval):
+    nwin = np.fix((fs2-(winlen-skiplen))/skiplen).astype(int)
+    y = np.zeros(nwin)
+    for n in range(nwin):
+        idx_start = round_half_up( (n)*skiplen/finterval )
+        idx_end = min((round_half_up( ((n)*skiplen + winlen)/finterval  ) + 1, x.shape[0]))
+        y[n] = np.sum(x2[idx_start:idx_end])
+    return np.array(y)
+
+
+def FFT_subbands(data,*args,**kwargs):
+    fs2 = 50
+    finterval = fs2/(data.shape[0]-1)
+    data2 = np.power(data,2)
+    data2_sum = data2.sum()
+    
+    result = np.empty(846)
+    idx = 0
+    for winlen in [1,2,3,4,5,10,15,20,25]:
+        y = SlideEnergy(data,data2,winlen,.5 if winlen==1 else 1.,fs2,finterval)
+        result[idx:idx+y.shape[0]] = y
+        result[idx+y.shape[0]:idx+2*y.shape[0]] = y/data2_sum
+        idx+=2*y.shape[0]
+    return result
+    
 # -------------------
 #  List of Features
 # -------------------
@@ -56,28 +108,67 @@ def get_FX_list(P):
     return val_FX_list(FEATURES[P.get('FX_sel')])
 
 def get_FX_list_len(FX_list):
-    return sum(num for _,_,num in [FXdict[Fx] for Fx in FX_list])
+    return sum(num for _,_,num,_ in [FXdict[Fx] for Fx in FX_list])
 
+def get_FX_names(indeces=None):
+    names = []
+    for name in [*FXdict]:
+        if name == 'auto_correlation':
+            names += ['auto_correlation_peak','auto_correlation_peak_idx']
+        elif name == 'Peak_fft':
+            names += ['peak_fft','peak_fft_fq','peak_fft_ratio']
+        elif name == 'Subband':
+            for bandwith in [1,2,3,4,5,10,15,20,25]:
+                stepsize = .5 if bandwith==1 else 1.
+                center_fqs = np.arange(start=(bandwith/2),stop=(stepsize+50-bandwith/2),step=stepsize)
+
+                for center_fq in center_fqs:
+                    names.append(f'bw_{bandwith}_cfq_{center_fq:.1f}')
+                    
+                for center_fq in center_fqs:
+                    names.append(f'bw_{bandwith}_cfq_{center_fq:.1f}_ratio')
+        else:
+            names.append(name)
+    
+    names = np.array(names)
+    
+    if indeces is None:
+        return names
+    else:
+        return names[indeces]
+
+
+''' name: (func, params, number of return values, fft) '''
 FXdict = {
-  "mean": (np.mean,None,1),
-  "std": (np.std,None,1),
-  #"zcr": (zcc,None),
-  "mcr": (mcc,None,1),
-  "energy": (energy,None,1),
-  "auto_correlation": (autocorr,1,2),
-  "kurtosis": (kurtosis,None,1),
-  "skew": (skew,None,1),
+  "mean": (np.mean,None,1,False),
+  "std": (np.std,None,1,False),
+  #"zcr": (zcc,None,1,False),
+  "mcr": (mcc,None,1,False),
+  "energy": (energy,None,1,False),
+  "auto_correlation": (autocorr,1,2,False),
+  "kurtosis": (kurtosis,None,1,False),
+  "skew": (skew,None,1,False),
+  
+  "mean_fft": (np.mean,None,1,True),
+  "std_fft": (np.std,None,1,True),
+  "energy_fft": (energy,None,1,True),
+  "kurtosis_fft": (kurtosis,None,1,True),
+  "skew_fft": (skew,None,1,True),
+  "DC_fft": (lambda data,_:data[0],None,1,True),
+  "Peak_fft": (FFT_peaks,None,3,True),
+  "Subband": (FFT_subbands,None,846,True),
 }
 
 QUARTILES = [0,5,10,25,50,75,90,95,100]
 
 # Append quartiles
 for q in QUARTILES:
-    FXdict["Q%d"%q] = (np.percentile,q,1)
+    FXdict["Q%d"%q] = (np.percentile,q,1,False)
 
+# Append quartile ranges
 for i in range(len(QUARTILES)-1):
     for j in range(i+1,len(QUARTILES)):
-        FXdict["IQR_%d_%d"%(QUARTILES[i], QUARTILES[j])] = (IQR,[QUARTILES[j], QUARTILES[i]],1)
+        FXdict["IQR_%d_%d"%(QUARTILES[i], QUARTILES[j])] = (IQR,[QUARTILES[j], QUARTILES[i]],1,False)
     
 
 FEATURES = {
@@ -187,16 +278,31 @@ def slidingWindow(P,data,label=None):
         # Iterate all channels
         for j in range(0,Cnr):
             # Extract the windowed data
-            datawin = data[j,w:w+winsize]
+            data_win = data[j,w:w+winsize]
+            
+            # Calculate FFT
+            data_fft = fft(data_win)
+            data_fft = abs(data_fft[:data_fft.shape[0]//2+1])
+            DC_fft = data_fft[0]
+            
+            # Silencing 0-0.5Hz
+            finterval = 50/data_fft.shape[0]
+            idxp5 = np.fix(0.5/finterval).astype(int)+1
+            data_fft[:idxp5] = 0 
             
             # Calculate all features
             i=0
             for FX_name in FX_list:
                 # Load Feature function
-                FX, FXOpts, L = FXdict[FX_name]
+                FX, FXOpts, L, rq_fft = FXdict[FX_name]
                 
                 # Compute the feature
-                fx = FX(datawin,FXOpts)
+                if FX_name == 'DC_fft':
+                    fx = DC_fft
+                elif rq_fft:
+                    fx = FX(data_fft,FXOpts)
+                else:
+                    fx = FX(data_win,FXOpts)
 
                 # Update the output vector
                 X[wi,j,i:i+L] = fx
@@ -216,20 +322,41 @@ def slidingWindow(P,data,label=None):
         return X.squeeze()
     
 if __name__ == "__main__":
-    data = np.arange(11)+1
-    data = np.array([1,1,1,1,1,1,1,1,1,1,2,3,4,5]*10)
-    print("Data:",data)
-    for name, (FX, FXOpts, num) in FXdict.items():
-        print(name+':',FX(data,FXOpts),num)
-
-    data = [1,2,3,2,1,2,3,2,1,2,3,2,1,2]
-    result = np.correlate(data, data,mode='full')
-    result = result[result.shape[0]//2:]
-    print(result)
+    data = np.array([0,1,1,1,1,1,2,3,4,5,0,1,1,1,1,1,2,3,4,5,0,1,1,1,1,1,2,3,4,5,0,1,1,1,1,1,2,3,4,5,0,1,1,1,1,1,2,3,4,5,0,1,1,1,1,1,2,3,4,5,0,1,1,1,1,1,2,3,4,5,0,1,1,1,1,1,2,3,4,5,0,1,1,1,1,1,2,3,4,5,0,1,1,1,1,1,2,3,4,5,])
+    data_fft = fft(data)
+    data_fft = np.abs(data_fft[:data_fft.shape[0]//2+1]).round(13)
+    fs2 = 50
+    finterval = fs2/(data_fft.shape[0]-1)
+    idxp5 = np.fix(0.5/finterval).astype(int)+1
+    data_fft[:idxp5] = 0 
     
-    print(autocorr(data, min_delay=5))
+    print("Data:",data)
+    i=0
+    for name, (FX, FXOpts, num, rq_fft) in FXdict.items():
+        i+=num
+        if rq_fft:
+            fx = FX(data_fft,FXOpts)
+        else:
+            fx = FX(data,FXOpts)
+        print(i,name+':',fx,num)
+
 
     from params import Params
     
-    P = Params(FX_sel = 'auto_correlation',winsize=5,jumpsize=5)
-    print(slidingWindow(P,data,label=None))
+    P = Params(FX_sel = 'all',winsize=5,jumpsize=5)
+    #print(slidingWindow(P,data,label=None))
+    
+    # print(data_fft)
+    #slide = SlideEnergy(data_fft,np.power(data_fft,2),1,0.5,fs2,finterval)
+    #slide = SlideEnergy(data_fft,np.power(data_fft,2),25,1,fs2,finterval)
+    
+    # print(data_fft.shape[0])
+
+    # print(slide)
+    # print(slide.shape)
+    # print(slide[80-1])
+
+    # print(np.power(data_fft,2)[10:11])
+    
+    #print(get_FX_names(np.random.choice(a=[False, True], size=(908))).shape)
+    

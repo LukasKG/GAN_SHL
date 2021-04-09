@@ -121,6 +121,7 @@ DEFAULT_PARAMS = {
         'FX_sel'          : 'basic',                    # Which features to extract
         'winsize'         : 500,                        # Size of the sliding window
         'jumpsize'        : 500,                        # Jump range of the sliding window
+        'PCA_n_components': None,                       # Number of components for PCA
         
         'print_epoch'     : True,                       # True: Print individual epochs
         'save_GAN'        : False,                      # True: Save the network models
