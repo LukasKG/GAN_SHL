@@ -91,12 +91,14 @@ if __package__ is None or __package__ == '':
     # uses current directory visibility
     import data_source as ds
     from log import log as writeLog
-    from sliding_window import get_FX_list, get_FX_list_len
+    from sliding_window import get_FX_list, get_FX_list_len, get_best_n_features
 else:
     # uses current package visibility
     from . import data_source as ds
     from .log import log as writeLog
-    from .sliding_window import get_FX_list, get_FX_list_len
+    from .sliding_window import get_FX_list, get_FX_list_len, get_best_n_features
+
+
 
 DEFAULT_PARAMS = {
         'name'            : "Missing_Name",             # Name to save files under
@@ -109,19 +111,21 @@ DEFAULT_PARAMS = {
         'dataset'         : "SHL",                      # Name of the dataset to be used
         'location'        : 'Hips',                     # Body location of the sensor (Hand,Hips,Bag,Torso)
         'labels'          : None,                       # Class labels
+        'channels'        : 'acc',                      # Sensor channels to be selected
+        'magnitude'       : True,                       # True: Calculates the magnitude of acceleration
         
         'Cross_val'       : 'user',                     # Crossvalidation mode, 'user' = as set in the individual users, 'user_x': days for user x seperatly, 'none': all data together
         'User_L'          : 1,                          # User for the Labelled data
         'User_U'          : 2,                          # User for the Unlabelled data
         'User_V'          : 3,                          # User for the Validation data
         
-        'channels'        : 'acc',                      # Sensor channels to be selected
-        'magnitude'       : True,                       # True: Calculates the magnitude of acceleration
-        'padding'         : 'zerol',                    # Padding type for the sliding window
         'FX_sel'          : 'basic',                    # Which features to extract
+        'FX_indeces'      : None,                       # Which features to select after extraction. None = all
+        'FX_num'          : None,                       # If given, select the n best features (overwrites 'FX_indeces')
+        
+        'padding'         : 'zerol',                    # Padding type for the sliding window
         'winsize'         : 500,                        # Size of the sliding window
         'jumpsize'        : 500,                        # Jump range of the sliding window
-        'PCA_n_components': None,                       # Number of components for PCA
         
         'print_epoch'     : True,                       # True: Print individual epochs
         'save_GAN'        : False,                      # True: Save the network models
@@ -131,6 +135,7 @@ DEFAULT_PARAMS = {
         'sample_no'       : None,                       # Not None: number of samples to reduce/increase all classes to
         'undersampling'   : False,                      # True: undersample all majority classes
         'oversampling'    : True,                       # True: oversample all minority classes  
+        'PCA_n_components': None,                       # Number of components for PCA
         
         'epochs'          : 500,                        # Number of training epochs
         'save_step'       : 10,                         # Number of epochs after which results are stored
@@ -217,7 +222,9 @@ class Params:
     
     def get_IO_shape(self):
         ''' Returns the input shape and number of output classes of a dataset '''
-        X = len(self.get_channel_list()) * get_FX_list_len(get_FX_list(self))
+        FX_len = 908 if self.get('FX_indeces') is None else len(self.get('FX_indeces'))
+        FX_len = min(FX_len,get_FX_list_len(get_FX_list(self)))
+        X = len(self.get_channel_list()) * FX_len
         Y = len(self.get('labels'))
         return [X,Y]  
 
@@ -251,6 +258,7 @@ class Params:
         assert key in DEFAULT_PARAMS.keys()
         self.params[key] = val
         if key=='channels': self.update_channels()
+        if key=='FX_num' and val is not None: self.set('FX_indeces',get_best_n_features(val))
     
     def set_keys(self,**kwargs):
         print(locals()['kwargs'])
@@ -286,7 +294,9 @@ if __name__ == "__main__":
     magnitude = False
     magnitude = True
     
-    P = Params(channels=channels,magnitude=magnitude)
+    FX_sel = 'all'
+
+    P = Params(channels=channels,magnitude=magnitude,FX_sel=FX_sel)
     # print(P.get_channel_list())
     # print(P.get_dataset_hash())
     # print(hex(P.get_dataset_hash()))

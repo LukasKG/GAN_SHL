@@ -87,7 +87,7 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
     # -------------------
     
     G, D, C = network.load_GAN(P,name)
-        
+
     # -------------------
     #  Optimizers
     # -------------------

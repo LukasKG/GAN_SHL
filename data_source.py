@@ -284,28 +284,40 @@ def load_data(P):
     if P.get('dataset') in SAVE_DATA:
         save_processed(F,hash_path)
         P.log("Saved processed data (%s)."%dataset_hash)
-        
+    
     return F
     
 def get_data(P):
     F = load_data(P)
     
+    # Select features
+    if P.get('FX_indeces') is not None:
+        F = select_features(F,P.get('FX_indeces'))
+        P.log(f"{F[0][0].shape[0]} features selected.")
+    
     if P.get('Cross_val') == 'user':
         return [F[P.get('User_L')-1], F[P.get('User_U')-1], F[P.get('User_V')-1]]
     
-     
     if P.get('Cross_val') == 'none':
         X = np.concatenate([X for X,_ in F])
         Y = np.concatenate([Y for _,Y in F])
         return [[X,Y], [X,Y], [X,Y]]    
 
+def select_features(F_base,indeces):
+    if indeces is None:
+        return F_base
+    indeces = np.array(indeces)
+    F_new = []
+    for X,Y in F_base:
+        F_new.append([X[:,indeces],Y])
+    return F_new
 
 if __name__ == "__main__":
     from params import Params
     
     dataset = 'SHL'
-    dataset = 'Short'
-    dataset = 'Test'
+    #dataset = 'Short'
+    #dataset = 'Test'
     
     FX_sel = 'basic'
     FX_sel = 'auto_correlation'

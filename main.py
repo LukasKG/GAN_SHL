@@ -216,11 +216,14 @@ def hyperopt_Search(P,param_space,eval_step=25,max_evals=None):
     else:
         P.log("CPU Training.",name='hyperopt')
     
-    DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, ds.get_data(P))
+    F = ds.get_data(P)
+    P.log("Data loaded.")
     
     def obj(args):
         P0 = P.copy()
         P0.update(args)
+
+        DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P0, ds.select_features(F,P0.get('FX_indeces')))
         
         mat_acc = np.empty((P0.get('runs')))
         for run in range(P0.get('runs')):
@@ -265,6 +268,7 @@ def get_Results(P,P_val=None):
     DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, ds.get_data(P))
     
     if P_val is not None:
+        P.log("Load Validation data.")
         _, _, DL_V = pp.get_all_dataloader(P_val, ds.get_data(P_val))
     
     ACC = None
@@ -388,8 +392,59 @@ def evaluate(P,P_val=None):
         con_mat = confusion_matrix(YF, Y, labels=None, sample_weight=None, normalize='all')
         plot_confusion_matrix(con_mat,P,name=name+'_normalised',title='Confusion matrix',fmt='0.3f')
 
-    
    
+def mrmr(K=None,log=True):
+    import pandas as pd
+    from sklearn.feature_selection import f_regression
+    
+    from sliding_window import get_FX_names
+    
+    if K is None:
+        K = 908
+    
+    P = Params(dataset='SHL',FX_sel='all',cross_val='user')
+    F = ds.load_data(P)
+    
+    X = np.concatenate([X0 for X0,_ in F])
+    Y = np.concatenate([Y0 for _,Y0 in F])
+   
+    X = pd.DataFrame(X, columns = get_FX_names())
+    Y = pd.Series(Y.ravel())
+    
+    F = pd.Series(f_regression(X, Y)[0], index = X.columns)
+    corr = pd.DataFrame(.00001, index = X.columns, columns = X.columns)
+    
+    # initialize list of selected features and list of excluded features
+    selected = []
+    not_selected = X.columns.to_list()
+    
+    # repeat K times
+    for i in range(K):
+      
+        # compute (absolute) correlations between the last selected feature and all the (currently) excluded features
+        if i > 0:
+            last_selected = selected[-1]
+            corr.loc[not_selected, last_selected] = X[not_selected].corrwith(X[last_selected]).abs().clip(.00001)
+            
+        # compute FCQ score for all the (currently) excluded features (this is Formula 2)
+        score = F.loc[not_selected] / corr.loc[not_selected, selected].mean(axis = 1).fillna(.00001)
+        
+        # find best feature, add it to selected and remove it from not_selected
+        best = score.index[score.argmax()]
+        
+        if log:
+            P.log(str(i+1).rjust(3,' ')+f': {best} (Score: {score[best]:.4f})')
+        selected.append(best)
+        not_selected.remove(best)
+        
+    indeces = [X.columns.get_loc(c) for c in selected]
+        
+    if log:
+        P.log(str(selected))
+        P.log(str(indeces))
+
+    return selected, indeces
+ 
 def main():
     import argparse
     parser = argparse.ArgumentParser()
@@ -400,6 +455,7 @@ def main():
     
     
     param_space= {
+        'FX_num'          : scope.int(hp.quniform('FX_num', 1, 908, q=1)),
         'batch_size'      : scope.int(hp.qloguniform('batch_size', np.log(16), np.log(512), q=1)),
         
         'GLR'             : hp.loguniform('GLR', np.log(0.00001), np.log(0.1)),
@@ -428,7 +484,7 @@ def main():
     }
     
     P_search = Params(
-        name = 'Hyper_GAN_2.0',
+        name = 'Hyper_GAN_3.0',
         dataset = 'SHL',
         CUDA = args.CUDA,
         
@@ -497,10 +553,12 @@ def main():
         
         print_epoch = False,
         epochs = 2000,
-        save_step = 10,
+        save_step = 2,
         runs = 5,
         
         FX_sel = 'all',
+        FX_num = 11,
+        
         Cross_val = 'user',
         
         C_basic_train = False,
@@ -537,15 +595,16 @@ def main():
         batch_size = 161
         ) 
     
-    F = ds.load_data(P)
+    #mrmr()
+
     
     TEST = False
     EVAL = False
     SEARCH = False
     
-    TEST = True
+    # TEST = True
     # EVAL = True
-    # SEARCH = True
+    SEARCH = True
     
     if TEST:
         P_test.set_keys(CUDA = True,)
