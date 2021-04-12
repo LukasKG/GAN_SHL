@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from sklearn.metrics import f1_score
-from typing import Tuple
 import torch
 
 def calc_accuracy(predictions: torch.Tensor, labels: torch.Tensor) -> float:
