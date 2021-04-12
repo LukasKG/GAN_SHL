@@ -44,15 +44,19 @@ def under_sampling(P,X,Y,ss='not minority'):
 
 def get_one_hot_labels(P,num):
     ''' Turns a list with label indeces into a one-hot label array '''
-    labels = np.random.choice(P.get('labels'), size=num, replace=True, p=None)
+    labels = np.random.choice(P.get('labels'), size=max(1,num), replace=True, p=None)
     return labels_to_one_hot(P,labels)
 
 def labels_to_one_hot(P,labels):
     ''' Takes a 1d ndarray with categorical labels and encodes them into one hot labels'''
     m = {y:i for i,y in enumerate(sorted(P.get('labels')))}
     Y = np.zeros((labels.shape[0],len(P.get('labels'))))
-    for i,y in enumerate(labels.squeeze().astype(int)):
-        Y[i,m[y]] = 1
+    try:
+        for i,y in enumerate(labels.reshape(-1).astype(int)):
+            Y[i,m[y]] = 1
+    except TypeError:
+        print(labels)
+        print(labels.shape)
     return Y
 
 def one_hot_to_labels(P,Y):

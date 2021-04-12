@@ -253,7 +253,7 @@ def hyperopt_Search(P,param_space,eval_step=25,max_evals=None):
         P.log("Best Params:",name='hyperopt')
         for key,val in space_eval(param_space, best_param).items():
             P.log(str(key)+': '+str(val),name='hyperopt')
-        P.log(f"Best Performance: {abs(max(trials.losses())):.5f} - Copy Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in space_eval(param_space, best_param).items()]),name='hyperopt')
+        P.log(f"Best Performance: {abs(min(trials.losses())):.5f} - Copy Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in space_eval(param_space, best_param).items()]),name='hyperopt')
         save_trials(P,trials)
 
     
@@ -467,18 +467,18 @@ def main():
         
         'G_ac_func'       : hp.choice('G_ac_func',['relu','leaky','leaky20','sig']),
         'G_hidden'        : scope.int(hp.qloguniform('G_hidden', np.log(16), np.log(2048), q=1)),
-        'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 0, 5, q=1)), 
+        'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 0, 9, q=1)), 
         'G_optim'         : hp.choice('G_optim',['AdamW','SGD']),
         
         'D_ac_func'       : hp.choice('D_ac_func',['relu','leaky','leaky20','sig']),
         'D_hidden'        : scope.int(hp.qloguniform('D_hidden', np.log(16), np.log(2048), q=1)),
-        'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 0, 5, q=1)), 
+        'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 0, 9, q=1)), 
         'D_optim'         : hp.choice('D_optim',['AdamW','SGD']),
         
         'C_ac_func'       : hp.choice('C_ac_func',['relu','leaky','leaky20','sig']),
         #'C_aco_func'      : hp.choice('C_aco_func',['gumbel','hardmax','softmax']),
         'C_hidden'        : scope.int(hp.qloguniform('C_hidden', np.log(16), np.log(2048), q=1)),
-        'C_hidden_no'     : scope.int(hp.quniform('C_hidden_no', 0, 5, q=1)), 
+        'C_hidden_no'     : scope.int(hp.quniform('C_hidden_no', 0, 9, q=1)), 
         'C_optim'         : hp.choice('C_optim',['AdamW','SGD']),
         'C_tau'           : hp.loguniform('C_tau', np.log(0.01), np.log(10.)),
     }
@@ -637,7 +637,7 @@ def main():
         evaluate(P,P_val)
 
     if SEARCH:
-        hyperopt_Search(P_search,param_space)
+        hyperopt_Search(P_search,param_space,eval_step=5,max_evals=None)
     
     # P.set_keys(
     #     name = 'eval_gumbel',
