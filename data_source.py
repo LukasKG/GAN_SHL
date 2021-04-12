@@ -37,11 +37,11 @@ LABELS_SHL = {
 SAVE_DATA = ['SHL','Short']
 
 PATHS = {
-    'SHL': '\\SHL_Dataset_preview_v1\\',
+    'SHL': '/SHL_Dataset_preview_v1/',
     'Short': None,
     'Test': None,
     'Sincos': None,
-    'Hash': '\\SHL_processed\\',
+    'Hash': '/SHL_processed/',
         }
 
 def get_path(P,dataset=None):
@@ -270,9 +270,10 @@ def load_data(P):
     if P.get('dataset') in SAVE_DATA:
         dataset_hash = P.get_dataset_hash_str()
         hash_path = get_path(P,dataset='Hash') + dataset_hash + '/'
+        P.log(f"Hashpath: {hash_path}")
         if hash_exists(hash_path):
             F = load_processed(hash_path)
-            P.log("Loaded processed data (%s)."%dataset_hash)
+            P.log("Loaded processed data.")
             return F
 
     V = read_data(P)
@@ -283,7 +284,7 @@ def load_data(P):
     
     if P.get('dataset') in SAVE_DATA:
         save_processed(F,hash_path)
-        P.log("Saved processed data (%s)."%dataset_hash)
+        P.log("Saved processed data.")
     
     return F
     

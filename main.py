@@ -456,12 +456,21 @@ def main():
     import argparse
     parser = argparse.ArgumentParser()
     
+    parser.add_argument('-test', dest='TEST', action='store_true')
+    parser.set_defaults(TEST=False)
+    
+    parser.add_argument('-eval', dest='EVAL', action='store_true')
+    parser.set_defaults(EVAL=False)
+    
+    parser.add_argument('-search', dest='SEARCH', action='store_true')
+    parser.set_defaults(SEARCH=False)
+    
     parser.add_argument('-cuda', dest='CUDA', action='store_true')
     parser.add_argument('-cpu', dest='CUDA', action='store_false')
     parser.set_defaults(CUDA=True)
     
     parser.add_argument('-data_path', type=str, dest='data_path')
-    parser.set_defaults(data_path='D:\\data')
+    parser.set_defaults(data_path='D:/data')
     
     args = parser.parse_args()
     
@@ -615,21 +624,21 @@ def main():
     #mrmr()
 
     
-    TEST = False
-    EVAL = False
-    SEARCH = False
+    TEST = args.TEST
+    EVAL = args.EVAL
+    SEARCH = args.SEARCH
     
     # TEST = True
     # EVAL = True
-    SEARCH = True
+    # SEARCH = True
     
     if TEST:
         P_test.set_keys(CUDA = True,)
         evaluate(P_test)
-        # hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
-        # P_test.set_keys(CUDA = False,)
-        # evaluate(P_test)
-        # hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
+        hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
+        P_test.set_keys(CUDA = False,)
+        evaluate(P_test)
+        hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
     
     if EVAL:
         P_val = P.copy()
