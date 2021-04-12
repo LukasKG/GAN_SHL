@@ -17,12 +17,14 @@ plt.ioff()
 if __package__ is None or __package__ == '':
     import data_source as ds
     import GAN
+    from metrics import calc_accuracy, calc_f1score
     from params import Params, save_fig, save_trials, load_trials
     from plot_confusion_matrix import plot_confusion_matrix
     import preprocessing as pp
 else:
     from . import data_source as ds
     from . import GAN
+    from .metrics import calc_accuracy, calc_f1score
     from .params import Params, save_fig, save_trials, load_trials
     from .plot_confusion_matrix import plot_confusion_matrix
     from . import preprocessing as pp
@@ -85,7 +87,7 @@ def hyperopt_C(eval_step=25,max_evals=None):
     def obj(args):
         P0 = P.copy()
         P0.update(args)
-        acc_mat = np.empty(shape=P.get('runs'))
+        perf_mat = np.empty(shape=P.get('runs'))
         for run in range(P0.get('runs')):
             
             C = network.new_C(P0,input_size=input_size,hidden_size=P0.get('C_hidden'),num_classes=output_size)
@@ -103,11 +105,11 @@ def hyperopt_C(eval_step=25,max_evals=None):
                     optimizer_C.step()
             C.eval()
             with torch.no_grad():
-                acc_mat[run] = np.mean([GAN.get_accuracy(C(XV), YV) for (XV, YV) in DL_V])
+                perf_mat[run] = np.mean([calc_f1score(C(XV), YV) for (XV, YV) in DL_V])
               
-        acc = np.mean(acc_mat)
-        P0.log(f"Perf: {acc:.5f} - Checked Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt')
-        return -acc
+        perf = np.mean(perf_mat)
+        P0.log(f"Perf: {perf:.5f} - Checked Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt')
+        return -perf
     
     trials = load_trials(P)
     if trials is None:
@@ -171,9 +173,9 @@ def pytorch_baseline(P):
             running_loss_C += loss.item()
         loss_C = running_loss_C/len(DL_L) 
         with torch.no_grad():
-            acc_C_G = np.mean([GAN.get_accuracy(C(XV), YV) for (XV, YV) in DL_V])
+            acc_C_G = np.mean([calc_accuracy(C(XV), YV) for (XV, YV) in DL_V])
             C.eval()
-            acc_C_S = np.mean([GAN.get_accuracy(C(XV), YV) for (XV, YV) in DL_V])
+            acc_C_S = np.mean([calc_accuracy(C(XV), YV) for (XV, YV) in DL_V])
         P.log(f"Epoch {epoch+1}: Loss = {loss_C:.4f} | Accuracy Gumbel = {acc_C_G:.4f} | Accuracy Softmax = {acc_C_S:.4f}")
 
    
@@ -225,16 +227,16 @@ def hyperopt_Search(P,param_space,eval_step=25,max_evals=None):
 
         DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P0, ds.select_features(F,P0.get('FX_indeces')))
         
-        mat_acc = np.empty((P0.get('runs')))
+        mat_perf = np.empty((P0.get('runs')))
         for run in range(P0.get('runs')):
-            _, _, _, C = GAN.train_GAN(P0, DL_L, DL_U_iter, DL_V, name=P0.get('name')+'_%d'%run)
+            _, _, C, _, _ = GAN.train_GAN(P0, DL_L, DL_U_iter, DL_V, name=P0.get('name')+'_%d'%run)
             C.eval()
             with torch.no_grad():
-                mat_acc[run] = np.mean([GAN.get_accuracy(C(XV),YV) for XV, YV in DL_V])
+                mat_perf[run] = np.mean([calc_f1score(C(XV),YV) for XV, YV in DL_V])
             
-        acc = np.mean(mat_acc)
-        P0.log(f"Perf: {acc:.5f} - Checked Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt')
-        return -acc
+        perf = np.mean(mat_perf)
+        P0.log(f"Perf: {perf:.5f} - Checked Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt')
+        return -perf
  
     trials = load_trials(P)
     if trials is None:
@@ -272,6 +274,7 @@ def get_Results(P,P_val=None):
         _, _, DL_V = pp.get_all_dataloader(P_val, ds.get_data(P_val))
     
     ACC = None
+    F1S = None
     YF = None
     RF = None
     PF = None
@@ -282,17 +285,19 @@ def get_Results(P,P_val=None):
     
     for run in range(P.get('runs')):
     
-        mat_accuracy, G, D, C = GAN.train_GAN(P, DL_L, DL_U_iter, DL_V, name=P.get('name')+'_%d'%run)
+        G, D, C, mat_accuracy, mat_f1_score = GAN.train_GAN(P, DL_L, DL_U_iter, DL_V, name=P.get('name')+'_%d'%run)
         
         if P.get('R_active'):
-            acc_BASE, R = GAN.train_Base(P, DL_L, DL_U_iter, DL_V, name=P.get('name')+'_%d'%run)
+            R, acc_BASE, f1_BASE = GAN.train_Base(P, DL_L, DL_U_iter, DL_V, name=P.get('name')+'_%d'%run)
             mat_accuracy = np.concatenate((mat_accuracy,acc_BASE))
-            
+            mat_f1_score = np.concatenate((mat_f1_score,f1_BASE))
         if ACC is None:
             ACC = np.expand_dims(mat_accuracy,axis=2)
+            F1S = np.expand_dims(mat_f1_score,axis=2)
         else:
             ACC = np.concatenate((ACC, np.expand_dims(mat_accuracy,axis=2)),axis=2)
-        
+            F1S = np.concatenate((F1S, np.expand_dims(mat_accuracy,axis=2)),axis=2)
+            
         C.eval()
         if P.get('R_active'):
             R.eval()
@@ -302,7 +307,7 @@ def get_Results(P,P_val=None):
                 
                 # Classify Validation data
                 PC = C(XV)
-    
+                
                 if YF == None:
                     YF = YV
                     PF = PC
@@ -316,11 +321,11 @@ def get_Results(P,P_val=None):
                     else:
                         RF = torch.cat((RF, R(XV).detach()), 0)
         
-    return ACC, (YF, RF, PF)
+    return ACC, F1S, (YF, RF, PF)
 
 def evaluate(P,P_val=None):
     P.set('R_active',True)
-    ACC, (YF, RF, PF) = get_Results(P,P_val)
+    ACC, F1S, (YF, RF, PF) = get_Results(P,P_val)
     
     # -------------------
     #  Plot Accuracy
@@ -328,58 +333,60 @@ def evaluate(P,P_val=None):
     
     timeline = np.arange(0,P.get('epochs')+1,P.get('save_step'))
     
-    acc_G = np.mean(ACC[0],axis=1)
-    std_G = np.std(ACC[0],axis=1)
-    acc_D = np.mean(ACC[1],axis=1)
-    std_D = np.std(ACC[1],axis=1)
-    acc_C = np.mean(ACC[2],axis=1)
-    std_C = np.std(ACC[2],axis=1)
-    acc_R = np.mean(ACC[3],axis=1)
-    
-    plt.figure(figsize=(27,9),dpi=300,clear=True)
-    fig, ax = plt.subplots()    
-    
-    legend = []  
-    cmap = plt.get_cmap('gnuplot')
-    indices = np.linspace(0, cmap.N, 7)
-    colors = [cmap(int(i)) for i in indices]
-
-    ax.plot(timeline,acc_C,c=colors[0],linestyle='solid')
-    ax.fill_between(timeline, acc_C-std_C, acc_C+std_C, alpha=0.3, facecolor=colors[0])
-    legend.append("Accuracy $A_C$")
-    
-    ax.plot(timeline,acc_D,c=colors[1],linestyle='dashed')
-    ax.fill_between(timeline, acc_D-std_D, acc_D+std_D, alpha=0.3, facecolor=colors[1])
-    legend.append("Accuracy $A_D$")
-    
-    ax.plot(timeline,acc_G,c=colors[2],linestyle='dotted')
-    ax.fill_between(timeline, acc_G-std_G, acc_G+std_G, alpha=0.3, facecolor=colors[2])
-    legend.append("Accuracy $A_G$")
-    
-    Y_max = 1.15
-    ax.plot(timeline,acc_R,c=colors[3],linestyle='dashdot')
-    legend.append("Accuracy $A_R$")
-    
-    # perf = np.zeros_like(acc_C)
-    # perf[0] = 0.0
-    # perf[1:] = (acc_C[1:]-acc_R[1:])/acc_R[1:]
-
-    # ax.plot(timeline,perf+1,c=colors[4],linestyle='solid')
-    # legend.append("Performance $P_C$")
-    
-    ax.set_xlim(0.0,P.get('epochs'))
-    ax.set_ylim(0.0,Y_max)
-    
-    # ax.legend(legend,fontsize=20)
-    # ax.set_xlabel('Epoch',fontsize=20)
-    # ax.set_ylabel('Accuracy',fontsize=20)
-    
-    ax.legend(legend)
-    ax.set_xlabel('Epoch')
-    ax.set_ylabel('Accuracy')
+    def get_label(name,model):
+        if name == "Accuracy": return "Accuracy $A_%s$"%model;
+        elif name == "F1 Score": return "F1 Score $F_%s$"%model;
+        else: return "NO_NAME"+model
         
-    ax.grid()
-    save_fig(P,'eval',fig)
+    for name,mat in (('Accuracy',ACC),("F1 Score",F1S)):
+    
+        acc_G = np.mean(mat[0],axis=1)
+        std_G = np.std(mat[0],axis=1)
+        acc_D = np.mean(mat[1],axis=1)
+        std_D = np.std(mat[1],axis=1)
+        acc_C = np.mean(mat[2],axis=1)
+        std_C = np.std(mat[2],axis=1)
+        acc_R = np.mean(mat[3],axis=1)
+        
+        plt.figure(figsize=(27,9),dpi=300,clear=True)
+        fig, ax = plt.subplots()    
+         
+        cmap = plt.get_cmap('gnuplot')
+        indices = np.linspace(0, cmap.N, 7)
+        colors = [cmap(int(i)) for i in indices]
+    
+        ax.plot(timeline,acc_C,c=colors[0],linestyle='solid',label=get_label(name,'C'))
+        ax.fill_between(timeline, acc_C-std_C, acc_C+std_C, alpha=0.3, facecolor=colors[0])
+        
+        ax.plot(timeline,acc_D,c=colors[1],linestyle='dashed',label=get_label(name,'D'))
+        ax.fill_between(timeline, acc_D-std_D, acc_D+std_D, alpha=0.3, facecolor=colors[1])
+        
+        ax.plot(timeline,acc_G,c=colors[2],linestyle='dotted',label=get_label(name,'G'))
+        ax.fill_between(timeline, acc_G-std_G, acc_G+std_G, alpha=0.3, facecolor=colors[2])
+        
+        Y_max = 1.15
+        ax.plot(timeline,acc_R,c=colors[3],linestyle='dashdot',label=get_label(name,'R'))
+        
+        # perf = np.zeros_like(acc_C)
+        # perf[0] = 0.0
+        # perf[1:] = (acc_C[1:]-acc_R[1:])/acc_R[1:]
+    
+        # ax.plot(timeline,perf+1,c=colors[4],linestyle='solid')
+        # legend.append("Performance $P_C$")
+        
+        ax.set_xlim(0.0,P.get('epochs'))
+        ax.set_ylim(0.0,Y_max)
+        
+        # ax.legend(legend,fontsize=20)
+        # ax.set_xlabel('Epoch',fontsize=20)
+        # ax.set_ylabel('Accuracy',fontsize=20)
+        
+        ax.legend()
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel(name)
+            
+        ax.grid()
+        save_fig(P,'eval_'+('acc' if name == 'Accuracy' else 'f1'),fig)
   
     YF = pp.one_hot_to_labels(P,YF)
     RF = pp.one_hot_to_labels(P,RF)
@@ -448,9 +455,14 @@ def mrmr(K=None,log=True):
 def main():
     import argparse
     parser = argparse.ArgumentParser()
+    
     parser.add_argument('-cuda', dest='CUDA', action='store_true')
     parser.add_argument('-cpu', dest='CUDA', action='store_false')
     parser.set_defaults(CUDA=True)
+    
+    parser.add_argument('-data_path', type=str, dest='data_path')
+    parser.set_defaults(data_path='D:\\data')
+    
     args = parser.parse_args()
     
     
@@ -466,26 +478,27 @@ def main():
         'CB1'             : hp.loguniform('CB1', np.log(0.001), np.log(0.99)),
         
         'G_ac_func'       : hp.choice('G_ac_func',['relu','leaky','leaky20','sig']),
-        'G_hidden'        : scope.int(hp.qloguniform('G_hidden', np.log(16), np.log(2048), q=1)),
+        'G_hidden'        : scope.int(hp.qloguniform('G_hidden', np.log(16), np.log(4096), q=1)),
         'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 0, 9, q=1)), 
         'G_optim'         : hp.choice('G_optim',['AdamW','SGD']),
         
         'D_ac_func'       : hp.choice('D_ac_func',['relu','leaky','leaky20','sig']),
-        'D_hidden'        : scope.int(hp.qloguniform('D_hidden', np.log(16), np.log(2048), q=1)),
+        'D_hidden'        : scope.int(hp.qloguniform('D_hidden', np.log(16), np.log(4096), q=1)),
         'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 0, 9, q=1)), 
         'D_optim'         : hp.choice('D_optim',['AdamW','SGD']),
         
         'C_ac_func'       : hp.choice('C_ac_func',['relu','leaky','leaky20','sig']),
         #'C_aco_func'      : hp.choice('C_aco_func',['gumbel','hardmax','softmax']),
-        'C_hidden'        : scope.int(hp.qloguniform('C_hidden', np.log(16), np.log(2048), q=1)),
+        'C_hidden'        : scope.int(hp.qloguniform('C_hidden', np.log(16), np.log(4096), q=1)),
         'C_hidden_no'     : scope.int(hp.quniform('C_hidden_no', 0, 9, q=1)), 
         'C_optim'         : hp.choice('C_optim',['AdamW','SGD']),
         'C_tau'           : hp.loguniform('C_tau', np.log(0.01), np.log(10.)),
     }
     
     P_search = Params(
-        name = 'Hyper_GAN_3.0',
+        name = 'Hyper_GAN_3.1',
         dataset = 'SHL',
+        data_path = args.data_path,
         CUDA = args.CUDA,
         
         print_epoch = False,
@@ -510,6 +523,7 @@ def main():
     P_test = Params(
         name = 'Test',
         dataset = 'Test',
+        data_path = args.data_path,
         CUDA = args.CUDA,
         
         print_epoch = False,
@@ -547,6 +561,7 @@ def main():
     P = Params(
         name = 'evaluation',
         dataset = 'SHL',
+        data_path = args.data_path,
         CUDA = args.CUDA,
         
         #PCA_n_components = 0.85,
@@ -557,7 +572,6 @@ def main():
         runs = 5,
         
         FX_sel = 'all',
-        FX_num = 11,
         
         Cross_val = 'user',
         
@@ -571,28 +585,31 @@ def main():
         User_U = 2,
         User_V = 3,
         
-        CB1 = 0.022687365760039192, 
-        CLR = 0.0011569226643110444, 
-        C_ac_func = 'sig', 
-        C_hidden = 138, 
-        C_hidden_no = 2, 
+        CB1 = 0.3597131380241697, 
+        CLR = 0.001587738728001573, 
+        C_ac_func = 'relu', 
+        C_hidden = 110, 
+        C_hidden_no = 5, 
         C_optim = 'AdamW', 
-        C_tau = 1.456271875874318,
+        C_tau = 1.5090084079747963, 
         
-        DB1 = 0.027028929852659037, 
-        DLR = 0.01174597928660055, 
-        D_ac_func = 'relu', 
-        D_hidden = 931, 
+        DB1 = 0.0064912436550433475, 
+        DLR = 0.0017267032075377806, 
+        D_ac_func = 'leaky', 
+        D_hidden = 1597, 
         D_hidden_no = 0, 
         D_optim = 'SGD', 
-        GB1 = 0.002328454596567183, 
-        GLR = 0.007870570011454539, 
-        G_ac_func = 'leaky20', 
-        G_hidden = 25, 
-        G_hidden_no = 1, 
-        G_optim = 'SGD', 
         
-        batch_size = 161
+        FX_num = 54, 
+        
+        GB1 = 0.002826079587153625, 
+        GLR = 0.0767101947616393, 
+        G_ac_func = 'relu', 
+        G_hidden = 17, 
+        G_hidden_no = 5, 
+        G_optim = 'AdamW', 
+        
+        batch_size = 18
         ) 
     
     #mrmr()
@@ -609,10 +626,10 @@ def main():
     if TEST:
         P_test.set_keys(CUDA = True,)
         evaluate(P_test)
-        hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
-        P_test.set_keys(CUDA = False,)
-        evaluate(P_test)
-        hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
+        # hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
+        # P_test.set_keys(CUDA = False,)
+        # evaluate(P_test)
+        # hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
     
     if EVAL:
         P_val = P.copy()
@@ -623,16 +640,16 @@ def main():
             )
 
         P.set_keys(
-            name = 'eval_C_GAN_no_cross',
-            C_basic_train = False,
-            Cross_val = 'none',
-            )
-        evaluate(P,P_val)
-        
-        P.set_keys(
             name = 'eval_C_Complete_user_cross',
             C_basic_train = True,
             Cross_val = 'user',
+            )
+        evaluate(P,P_val)
+
+        P.set_keys(
+            name = 'eval_C_GAN_no_cross',
+            C_basic_train = False,
+            Cross_val = 'none',
             )
         evaluate(P,P_val)
 

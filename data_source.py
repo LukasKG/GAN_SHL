@@ -293,7 +293,7 @@ def get_data(P):
     # Select features
     if P.get('FX_indeces') is not None:
         F = select_features(F,P.get('FX_indeces'))
-        P.log(f"{F[0][0].shape[0]} features selected.")
+        P.log(f"{F[0][0].shape[1]} features selected.")
     
     if P.get('Cross_val') == 'user':
         return [F[P.get('User_L')-1], F[P.get('User_U')-1], F[P.get('User_V')-1]]

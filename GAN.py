@@ -4,19 +4,14 @@ import numpy as np
 import torch
 
 if __package__ is None or __package__ == '':
+    from metrics import calc_accuracy, calc_f1score
     import network
     import preprocessing as pp
 else:
+    from .metrics import calc_accuracy, calc_f1score
     from . import network
     from . import preprocessing as pp
    
-    
-def get_accuracy(Y_pred,Y_true):
-    if Y_true.size()[1] == 1:
-        return (Y_pred.round() == Y_true).sum().item() / Y_true.size(0)
-    else:
-        return (Y_pred.max(dim=1)[1] == Y_true.max(dim=1)[1]).sum().item() / Y_true.size(0)
-
 def train_Base(P, DL_L, DL_U_iter, DL_V, name=None):   
     if name is None:
         name = P.get('name')
@@ -27,6 +22,7 @@ def train_Base(P, DL_L, DL_U_iter, DL_V, name=None):
         R_Loss.cuda()
 
     mat_accuracy = np.zeros((1, int(P.get('epochs')/P.get('save_step'))+1))
+    mat_f1_score = np.zeros((1, int(P.get('epochs')/P.get('save_step'))+1))
     R = network.load_Ref(P,name)  
     optimizer_R = network.get_optimiser(P,'C',R.parameters())
     
@@ -43,9 +39,13 @@ def train_Base(P, DL_L, DL_U_iter, DL_V, name=None):
             idx = int(epoch/P.get('save_step'))+1
             R.eval()
             with torch.no_grad():
-                mat_accuracy[0,idx] = np.mean([get_accuracy(R(XV), YV) for XV, YV in DL_V])
-            
-    return mat_accuracy, R
+                mat1, mat2 = [], []
+                for XV, YV in DL_V:
+                    mat1.append(calc_accuracy(R(XV), YV))
+                    mat2.append(calc_f1score(R(XV), YV))
+                mat_accuracy[0,idx] = np.mean(mat1)
+                mat_f1_score[0,idx] = np.mean(mat2)
+    return R, mat_accuracy, mat_f1_score
  
         
 def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
@@ -77,10 +77,11 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
         #P.log("CPU Training.")
 
     # -------------------
-    #  Accuracy
+    #  Metrics
     # -------------------
 
     mat_accuracy = np.zeros((3, int(P.get('epochs')/P.get('save_step'))+1))
+    mat_f1_score = np.zeros((3, int(P.get('epochs')/P.get('save_step'))+1))
         
     # -------------------
     #  Networks
@@ -256,15 +257,17 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
         if (epoch+1)%P.get('save_step') == 0:
             idx = int(epoch/P.get('save_step'))+1
             
-            acc_D_real = []
-            acc_D_vs_C = []
-            acc_D_vs_G = []
-            acc_C_real = []
-            
+            D_acc = np.zeros((3,len(DL_V)))
+            C_acc = np.zeros(len(DL_V))
+
+            D_f1 = np.zeros((3,len(DL_V))) 
+            C_f1 = np.zeros((len(DL_V)))
+            G_f1 = np.zeros((len(DL_V)))
+
             G.eval();D.eval();C.eval();
             
             with torch.no_grad():
-                for data in DL_V:
+                for i,data in enumerate(DL_V):
                     
                     XV, YV = data
                 
@@ -283,32 +286,43 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
                     RV1 = floatTensor(WV1.shape[0],1).fill_(1.0)
                     FV2 = floatTensor(WV2.shape[0],1).fill_(0.0)
                     FV3 = floatTensor(WV3.shape[0],1).fill_(0.0)
+                    RV3 = floatTensor(WV3.shape[0],1).fill_(1.0)
                     
                     AV1 = D(WV1)
                     AV2 = D(WV2)
                     AV3 = D(WV3)
                     
-                    acc_D_real.append(get_accuracy(AV1,RV1))
-                    acc_D_vs_C.append(get_accuracy(AV2,FV2))
-                    acc_D_vs_G.append(get_accuracy(AV3,FV3))
-                
-                    acc_C_real.append(get_accuracy(PV, YV))
-                
-            acc_D_real = np.mean(acc_D_real)
-            acc_D_vs_C = np.mean(acc_D_vs_C)
-            acc_D_vs_G = np.mean(acc_D_vs_G)
-            acc_D = .5*acc_D_real + .25*acc_D_vs_G + .25*acc_D_vs_C
+                    D_acc[0,i] = calc_accuracy(AV1,RV1)
+                    D_acc[1,i] = calc_accuracy(AV2,FV2)
+                    D_acc[2,i] = calc_accuracy(AV3,FV3)
+                                        
+                    C_acc[i] = calc_accuracy(PV, YV)
+                    
+                    
+                    D_f1[0,i] = calc_f1score(AV1,RV1)
+                    D_f1[1,i] = calc_f1score(AV2,FV2)
+
+                    C_f1[i] = calc_f1score(PV, YV)
+                    G_f1[i] = calc_f1score(AV3,RV3)
+
+                    
+            D_acc = np.mean(D_acc,axis=1)    
+            acc_D = .5*D_acc[0] + .25*D_acc[1] + .25*D_acc[2]
             mat_accuracy[1,idx] = acc_D
         
-            acc_C_real = np.mean(acc_C_real)
-            acc_C_vs_D = 1.0 - acc_D_vs_C
+            acc_C_real = np.mean(C_acc)
+            acc_C_vs_D = 1.0 - D_acc[1]
             acc_C = .5*acc_C_real + .5*acc_C_vs_D
             mat_accuracy[2,idx] = acc_C_real
         
-            acc_G = 1.0 - acc_D_vs_G
+            acc_G = 1.0 - D_acc[2]
             mat_accuracy[0,idx] = acc_G
 
-            logString = "[%s] [Epoch %d/%d] [G acc: %f] [D acc: %f | vs Real: %f | vs G: %f | vs C: %f] [C acc: %f | vs Real: %f | vs D: %f]"%(name, epoch+1, P.get('epochs'), acc_G, acc_D, acc_D_real, acc_D_vs_G, acc_D_vs_C, acc_C, acc_C_real, acc_C_vs_D)
+            mat_f1_score[0,idx] = np.mean(G_f1)
+            mat_f1_score[1,idx] = np.mean(D_f1)
+            mat_f1_score[2,idx] = np.mean(C_f1)
+            
+            logString = f"[{name}] [Epoch {epoch+1}/{P.get('epochs')}] [G F1: {mat_f1_score[0,idx]} acc: {acc_G}] [D F1: {mat_f1_score[1,idx]} acc: {acc_D} | vs Real: {D_acc[0]} | vs G: {D_acc[2]} | vs C: {D_acc[1]}] [C F1: {mat_f1_score[2,idx]} acc: {acc_C} | vs Real: {acc_C_real} | vs D: {acc_C_vs_D}]"
             P.log(logString,save=True) 
                    
     # -------------------
@@ -318,7 +332,7 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
     if P.get('save_GAN'):
         network.save_GAN(name,G,D,C)
             
-    return mat_accuracy, G, D, C
+    return G, D, C, mat_accuracy, mat_f1_score
     
 if __name__ == "__main__":
     import main
