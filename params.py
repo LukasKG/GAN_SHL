@@ -105,7 +105,7 @@ DEFAULT_PARAMS = {
         'log_name'        : 'log',                      # Name of the logfile
         'dummy_size'      : 100000,                     # Length of the dummy signal (only for dataset 'Short')
         'noise'           : 0.0,                        # Standard deviation of gaussian noise added to the signals
-        'data_path'       : 'D:\\data',                 # Path to the datasets
+        'data_path'       : 'D:/data',                 # Path to the datasets
         'CUDA'            : True,                       # True: utilises CUDA if available
         
         'dataset'         : "SHL",                      # Name of the dataset to be used
@@ -127,7 +127,7 @@ DEFAULT_PARAMS = {
         'winsize'         : 500,                        # Size of the sliding window
         'jumpsize'        : 500,                        # Jump range of the sliding window
         
-        'print_epoch'     : True,                       # True: Print individual epochs
+        'print_epoch'     : False,                      # True: Print individual epochs
         'save_GAN'        : False,                      # True: Save the network models
         'pretrain'        : None,                       # If given: Name of the pretrained model to be loaded.
         'runs'            : 10,                         # Number of runs
