@@ -453,11 +453,16 @@ def main():
     parser.add_argument('-print', dest='PRINT', action='store_true')
     parser.set_defaults(PRINT=default['print_epoch'])
     
+    parser.add_argument('-basic', dest='BASIC', action='store_true')
+    parser.add_argument('-no_basic', dest='BASIC', action='store_false')
+    parser.set_defaults(BASIC=default['C_basic_train'])
+    
     args = parser.parse_args()
     P_args = Params(
         data_path = args.data_path,
         CUDA = args.CUDA,
         print_epoch = args.PRINT,
+        C_basic_train = args.BASIC,
         )
     
     
@@ -492,7 +497,7 @@ def main():
     
     P_search = P_args.copy()
     P_search.set_keys(
-        name = 'Hyper_GAN_3.1',
+        name = 'Hyper_GAN_3.2',
         dataset = 'SHL',
         data_path = args.data_path,
         CUDA = args.CUDA,
@@ -506,8 +511,6 @@ def main():
         User_L = 3,
         User_U = 2,
         User_V = 1,
-        
-        C_basic_train = False,
         
         sample_no = None,
         undersampling = True,
@@ -528,8 +531,6 @@ def main():
         
         FX_sel = 'all',
         Cross_val = 'user',
-        
-        C_basic_train = False,
         
         sample_no = None,
         undersampling = False,
@@ -569,8 +570,6 @@ def main():
         FX_sel = 'all',
         
         Cross_val = 'user',
-        
-        C_basic_train = False,
         
         sample_no = None,
         undersampling = False,
