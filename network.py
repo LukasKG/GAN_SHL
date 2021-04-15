@@ -166,9 +166,9 @@ def new_D(P,input_size,hidden_size):
     # save_Model(get_string_name(P.get('name'),run,'D'),D)
     return D
 
-def new_C(P,input_size,hidden_size,num_classes):
+def new_C(P,input_size,hidden_size,num_classes,hidden_no,ac_func,aco_func='gumbel',hard=True,tau=1):
     if P.get('C_no') == 1:
-        C = Classifier_01(input_size, hidden_size, num_classes, hidden_no=P.get('C_hidden_no'), ac_func=P.get('C_ac_func'), aco_func=P.get('C_aco_func'), hard=True, tau=P.get('C_tau'))
+        C = Classifier_01(input_size, hidden_size, num_classes, hidden_no=hidden_no, ac_func=ac_func, aco_func=aco_func, hard=hard, tau=tau)
     # elif P.get('C_no') == 2:
     #     C = Classifier_02(input_size, hidden_size, num_classes)
     # elif P.get('C_no') == 3:
@@ -306,7 +306,7 @@ def load_Ref(P,name=None):
     # Load Classifier
     R = load_Model(P,name+'_R')
     if R is None:
-        R = new_C(P, input_size=input_size, hidden_size=P.get('C_hidden'), num_classes=output_size)
+        R = new_C(P, input_size=input_size, hidden_size=P.get('R_hidden'), num_classes=output_size, hidden_no=P.get('R_hidden_no'), ac_func=P.get('R_ac_func'), aco_func=P.get('R_aco_func'), hard=True, tau=P.get('R_tau'))
         
     if P.get('CUDA'):
         return activate_CUDA(R)
@@ -333,7 +333,7 @@ def load_GAN(P,name=None):
     if C is None and P.get('pretrain') is not None:
         C = load_Pretrain_C(P)
     if C is None:
-        C = new_C(P, input_size=input_size, hidden_size=P.get('C_hidden'), num_classes=output_size)
+        C = new_C(P, input_size=input_size, hidden_size=P.get('C_hidden'), num_classes=output_size, hidden_no=P.get('C_hidden_no'), ac_func=P.get('C_ac_func'), aco_func=P.get('C_aco_func'), hard=True, tau=P.get('C_tau'))
        
     if P.get('CUDA'):
         return activate_CUDA(G, D, C)

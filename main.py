@@ -110,14 +110,51 @@ def sklearn_baseline(P):
     P.log(f"RFC Acc Test: {score:.2f}")
 
 
-def hyperopt_C(P,eval_step=5,max_evals=None):
+def hyperopt_Search(P,param_space,objective_func,eval_step=5,max_evals=None):
+    P.log("Params: "+str(P),name='hyperopt')
+    
+    if P.get('CUDA') and torch.cuda.is_available():
+        P.log("CUDA Training.",name='hyperopt')
+    else:
+        P.log("CPU Training.",name='hyperopt')
+    
+    # F = ds.get_data(P)
+    # P.log("Data loaded.")
+ 
+    trials = load_trials(P)
+    if trials is None:
+        trials = Trials()
+    
+    while True:
+        if max_evals is not None:
+            if len(trials.trials) >= max_evals:
+                P.log(f"Maximum number of evaluations reached ({len(trials.trials)}/{max_evals})",name='hyperopt')
+                try:
+                    best_param = fmin(objective_func, param_space, algo=tpe.suggest, max_evals=len(trials.trials), trials=trials, rstate=np.random.RandomState(42))
+                    P.log(f"Best Performance: {abs(min(trials.losses())):.5f} - Copy Params: "+", ".join([(key if key[0] != 'C' else 'R'+key[1:])+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in space_eval(param_space, best_param).items()]),name='hyperopt')
+                except:
+                    P.log("Couldn't log best performance.")
+                break
+            evals = min(max_evals,len(trials.trials) + eval_step)
+        else:
+            evals = len(trials.trials) + eval_step
+        evals = max(25,evals)
+        
+        best_param = fmin(objective_func, param_space, algo=tpe.suggest, max_evals=evals, trials=trials, rstate=np.random.RandomState(42))
+        P.log("Best Params:",name='hyperopt')
+        for key,val in space_eval(param_space, best_param).items():
+            P.log(str(key)+': '+str(val),name='hyperopt')
+        P.log(f"Best Performance: {abs(min(trials.losses())):.5f} - Copy Params: "+", ".join([key+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in space_eval(param_space, best_param).items()]+','),name='hyperopt')
+        save_trials(P,trials)
+
+def hyperopt_R(P,eval_step=5,max_evals=None):
     P.set('save_step',P.get('epochs')+1)
     P.log("Params: "+str(P),name='hyperopt')
     
     param_space= {
         'epochs'          : scope.int(hp.uniform('epochs',10,200)),
-        'batch_size'      : scope.int(hp.qloguniform('batch_size', np.log(32), np.log(512), q=1)),
-        'FX_num'          : scope.int(hp.quniform('FX_num', 1, 908, q=1)),
+        'batch_size'      : scope.int(hp.qloguniform('batch_size', np.log(256), np.log(1024), q=1)),
+        'FX_num'          : scope.int(hp.quniform('FX_num', 1, 500, q=1)),
 
         'CLR'             : hp.loguniform('CLR', np.log(0.00001), np.log(0.1)),
         'CB1'             : hp.loguniform('CB1', np.log(0.001), np.log(0.99)),
@@ -141,9 +178,12 @@ def hyperopt_C(P,eval_step=5,max_evals=None):
     
     def obj(args):
         P0 = P.copy()
-        P0.update(args)
-        P0.log("Check Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt')
         
+        # Original Hyperopt trial object was initialised with C attributes instead of R
+        for key, val in args.items():
+            P0.set((key if key[0] != 'C' else 'R'+key[1:]),val)
+            
+        P0.log("Check Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt')
         DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P0, ds.select_features(F,P0.get('FX_indeces')))
         
         perf_mat = np.empty(shape=(2,P.get('runs'),len(DL_V)))
@@ -167,26 +207,57 @@ def hyperopt_C(P,eval_step=5,max_evals=None):
     while True:
         if max_evals is not None:
             if len(trials.trials) >= max_evals:
-                P.log(f"Maximum number of evaluations reached ({max_evals})",name='hyperopt')
+                P.log(f"Maximum number of evaluations reached ({len(trials.trials)}/{max_evals})",name='hyperopt')
+                try:
+                    best_param = fmin(obj, param_space, algo=tpe.suggest, max_evals=len(trials.trials), trials=trials, rstate=np.random.RandomState(42))
+                    P.log(f"Best Performance: {abs(min(trials.losses())):.5f} - Copy Params: "+", ".join([(key if key[0] != 'C' else 'R'+key[1:])+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in space_eval(param_space, best_param).items()]),name='hyperopt')
+                except:
+                    P.log("Couldn't log best performance.")
                 break
-        evals = len(trials.trials) + eval_step
+            evals = min(max_evals,len(trials.trials) + eval_step)
+        else:
+            evals = len(trials.trials) + eval_step
+        evals = max(25,evals)
 
         best_param = fmin(obj, param_space, algo=tpe.suggest, max_evals=evals, trials=trials, rstate=np.random.RandomState(42))
         P.log("Best Params:",name='hyperopt')
         for key,val in space_eval(param_space, best_param).items():
             P.log(str(key)+': '+str(val),name='hyperopt')
-        
+        P.log(f"Best Performance: {abs(min(trials.losses())):.5f} - Copy Params: "+", ".join([(key if key[0] != 'C' else 'R'+key[1:])+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in space_eval(param_space, best_param).items()]),name='hyperopt')
         save_trials(P,trials)
     
-def hyperopt_Search(P,param_space,eval_step=5,max_evals=None):
+def hyperopt_GAN(P,eval_step=5,max_evals=None):
     P.set('R_active',False)
     P.set('save_step',P.get('epochs')+1)
-    P.log("Params: "+str(P),name='hyperopt')
     
-    if P.get('CUDA') and torch.cuda.is_available():
-        P.log("CUDA Training.",name='hyperopt')
-    else:
-        P.log("CPU Training.",name='hyperopt')
+    param_space= {
+        'FX_num'          : scope.int(hp.quniform('FX_num', 1, 500, q=1)),
+        'batch_size'      : scope.int(hp.qloguniform('batch_size', np.log(256), np.log(1024), q=1)),
+        
+        'GLR'             : hp.loguniform('GLR', np.log(0.00001), np.log(0.1)),
+        'GB1'             : hp.loguniform('GB1', np.log(0.001), np.log(0.99)),
+        'DLR'             : hp.loguniform('DLR', np.log(0.00001), np.log(0.1)),
+        'DB1'             : hp.loguniform('DB1', np.log(0.001), np.log(0.99)),
+        'CLR'             : hp.loguniform('CLR', np.log(0.00001), np.log(0.1)),
+        'CB1'             : hp.loguniform('CB1', np.log(0.001), np.log(0.99)),
+        
+        'G_ac_func'       : hp.choice('G_ac_func',['relu','leaky','leaky20','sig']),
+        'G_hidden'        : scope.int(hp.qloguniform('G_hidden', np.log(16), np.log(4096), q=1)),
+        'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 0, 9, q=1)), 
+        'G_optim'         : hp.choice('G_optim',['AdamW','SGD']),
+        
+        'D_ac_func'       : hp.choice('D_ac_func',['relu','leaky','leaky20','sig']),
+        'D_hidden'        : scope.int(hp.qloguniform('D_hidden', np.log(16), np.log(4096), q=1)),
+        'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 0, 9, q=1)), 
+        'D_optim'         : hp.choice('D_optim',['AdamW','SGD']),
+        
+        'C_ac_func'       : hp.choice('C_ac_func',['relu','leaky','leaky20','sig']),
+        #'C_aco_func'      : hp.choice('C_aco_func',['gumbel','hardmax','softmax']),
+        'C_hidden'        : scope.int(hp.qloguniform('C_hidden', np.log(16), np.log(4096), q=1)),
+        'C_hidden_no'     : scope.int(hp.quniform('C_hidden_no', 0, 9, q=1)), 
+        'C_optim'         : hp.choice('C_optim',['AdamW','SGD']),
+        'C_tau'           : hp.loguniform('C_tau', np.log(0.01), np.log(10.)),
+    }
     
     F = ds.get_data(P)
     P.log("Data loaded.")
@@ -211,25 +282,7 @@ def hyperopt_Search(P,param_space,eval_step=5,max_evals=None):
         P0.log(f"F1: {perf[0]:.5f} | Accuracy: {perf[1]:.5f}",name='hyperopt')
         return -perf[0]
  
-    trials = load_trials(P)
-    if trials is None:
-        trials = Trials()
-    
-    while True:
-        if max_evals is not None:
-            if len(trials.trials) >= max_evals:
-                P.log(f"Maximum number of evaluations reached ({max_evals})",name='hyperopt')
-                break
-            evals = min(max_evals,len(trials.trials) + eval_step)
-        else:
-            evals = len(trials.trials) + eval_step
-
-        best_param = fmin(obj, param_space, algo=tpe.suggest, max_evals=evals, trials=trials, rstate=np.random.RandomState(42))
-        P.log("Best Params:",name='hyperopt')
-        for key,val in space_eval(param_space, best_param).items():
-            P.log(str(key)+': '+str(val),name='hyperopt')
-        P.log(f"Best Performance: {abs(min(trials.losses())):.5f} - Copy Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in space_eval(param_space, best_param).items()]),name='hyperopt')
-        save_trials(P,trials)
+    hyperopt_Search(P,param_space,obj,eval_step=eval_step,max_evals=max_evals)
 
     
 def get_Results(P,P_val=None):
@@ -457,6 +510,9 @@ def main():
     parser.add_argument('-no_basic', dest='BASIC', action='store_false')
     parser.set_defaults(BASIC=default['C_basic_train'])
     
+    parser.add_argument('-max_evals', type=int, dest='max_evals')
+    parser.set_defaults(max_evals=None)
+    
     args = parser.parse_args()
     P_args = Params(
         data_path = args.data_path,
@@ -465,36 +521,7 @@ def main():
         C_basic_train = args.BASIC,
         )
     
-    
-    param_space= {
-        'FX_num'          : scope.int(hp.quniform('FX_num', 1, 908, q=1)),
-        'batch_size'      : scope.int(hp.qloguniform('batch_size', np.log(16), np.log(512), q=1)),
-        
-        'GLR'             : hp.loguniform('GLR', np.log(0.00001), np.log(0.1)),
-        'GB1'             : hp.loguniform('GB1', np.log(0.001), np.log(0.99)),
-        'DLR'             : hp.loguniform('DLR', np.log(0.00001), np.log(0.1)),
-        'DB1'             : hp.loguniform('DB1', np.log(0.001), np.log(0.99)),
-        'CLR'             : hp.loguniform('CLR', np.log(0.00001), np.log(0.1)),
-        'CB1'             : hp.loguniform('CB1', np.log(0.001), np.log(0.99)),
-        
-        'G_ac_func'       : hp.choice('G_ac_func',['relu','leaky','leaky20','sig']),
-        'G_hidden'        : scope.int(hp.qloguniform('G_hidden', np.log(16), np.log(4096), q=1)),
-        'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 0, 9, q=1)), 
-        'G_optim'         : hp.choice('G_optim',['AdamW','SGD']),
-        
-        'D_ac_func'       : hp.choice('D_ac_func',['relu','leaky','leaky20','sig']),
-        'D_hidden'        : scope.int(hp.qloguniform('D_hidden', np.log(16), np.log(4096), q=1)),
-        'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 0, 9, q=1)), 
-        'D_optim'         : hp.choice('D_optim',['AdamW','SGD']),
-        
-        'C_ac_func'       : hp.choice('C_ac_func',['relu','leaky','leaky20','sig']),
-        #'C_aco_func'      : hp.choice('C_aco_func',['gumbel','hardmax','softmax']),
-        'C_hidden'        : scope.int(hp.qloguniform('C_hidden', np.log(16), np.log(4096), q=1)),
-        'C_hidden_no'     : scope.int(hp.quniform('C_hidden_no', 0, 9, q=1)), 
-        'C_optim'         : hp.choice('C_optim',['AdamW','SGD']),
-        'C_tau'           : hp.loguniform('C_tau', np.log(0.01), np.log(10.)),
-    }
-    
+       
     P_search = P_args.copy()
     P_search.set_keys(
         name = 'Hyper_GAN_3.2',
@@ -565,7 +592,7 @@ def main():
 
         epochs = 2000,
         save_step = 2,
-        runs = 5,
+        runs = 3,
         
         FX_sel = 'all',
         
@@ -579,31 +606,40 @@ def main():
         User_U = 2,
         User_V = 3,
         
-        CB1 = 0.3597131380241697, 
-        CLR = 0.001587738728001573, 
-        C_ac_func = 'relu', 
-        C_hidden = 110, 
-        C_hidden_no = 5, 
+        CB1 = 0.07247356069962284, 
+        CLR = 1.631929289680412e-05, 
+        C_ac_func = 'leaky20', 
+        C_hidden = 697, 
+        C_hidden_no = 6, 
         C_optim = 'AdamW', 
-        C_tau = 1.5090084079747963, 
+        C_tau = 3.962724498941699, 
         
-        DB1 = 0.0064912436550433475, 
-        DLR = 0.0017267032075377806, 
-        D_ac_func = 'leaky', 
-        D_hidden = 1597, 
-        D_hidden_no = 0, 
+        DB1 = 0.17760140736728408, 
+        DLR = 0.0001856573882131211, 
+        D_ac_func = 'sig', 
+        D_hidden = 32, 
+        D_hidden_no = 7, 
         D_optim = 'SGD', 
         
-        FX_num = 54, 
+        FX_num = 38, 
         
-        GB1 = 0.002826079587153625, 
-        GLR = 0.0767101947616393, 
-        G_ac_func = 'relu', 
-        G_hidden = 17, 
-        G_hidden_no = 5, 
-        G_optim = 'AdamW', 
+        GB1 = 0.04999825986171865, 
+        GLR = 0.03250081887833738, 
+        G_ac_func = 'leaky', 
+        G_hidden = 157, 
+        G_hidden_no = 4, 
+        G_optim = 'SGD', 
         
-        batch_size = 18
+        batch_size = 256,
+        
+        RB1 = 0.13905385615810364, 
+        RLR = 2.6665447517436225e-05, 
+        R_ac_func = 'leaky', 
+        R_aco_func = 'softmax', 
+        R_hidden = 2719, 
+        R_hidden_no = 3, 
+        R_optim = 'AdamW', 
+        R_tau = 0.606889373892653,
         ) 
     
     #mrmr()
@@ -620,10 +656,10 @@ def main():
     if TEST:
         P_test.set_keys(CUDA = True,)
         evaluate(P_test)
-        hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
+        hyperopt_GAN(P_test,eval_step=2,max_evals=5)
         P_test.set_keys(CUDA = False,)
         evaluate(P_test)
-        hyperopt_Search(P_test,param_space,eval_step=2,max_evals=5)
+        hyperopt_GAN(P_test,eval_step=2,max_evals=5)
     
     if EVAL:
         P_val = P.copy()
@@ -632,28 +668,23 @@ def main():
             undersampling = False,
             oversampling = False,
             )
-
-        P.set_keys(
-            name = 'eval_C_Complete_user_cross',
-            C_basic_train = True,
-            Cross_val = 'user',
-            )
-        evaluate(P,P_val)
-
-        P.set_keys(
-            name = 'eval_C_GAN_no_cross',
-            C_basic_train = False,
-            Cross_val = 'none',
-            )
-        evaluate(P,P_val)
+        
+        for cross_val in ['user','none']:
+            for basic_train in [True,False]:
+                   P.set_keys(
+                        name = '_'.join(['eval','C',('Complete' if basic_train else 'GAN'),cross_val,'cross']),
+                        C_basic_train = basic_train,
+                        Cross_val = cross_val,
+                        )
+                   evaluate(P,P_val) 
 
     if SEARCH:
-        hyperopt_Search(P_search,param_space,eval_step=5,max_evals=None)
+        hyperopt_GAN(P_search,eval_step=5,max_evals=args.max_evals)
     
     if SEARCH_C:
         P_C = P_search.copy()
         P_C.set_keys(name='Hyperopt_C')
-        hyperopt_C(P_C,eval_step=5,max_evals=None)
+        hyperopt_R(P_C,eval_step=5,max_evals=args.max_evals)
     
     # P.set_keys(
     #     name = 'eval_gumbel',

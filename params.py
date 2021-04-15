@@ -178,6 +178,16 @@ DEFAULT_PARAMS = {
         'G_ac_func'       : 'leaky',                    # Generator: Type of activation function for the hidden layers
         'G_aco_func'      : 'tanh',                     # Generator: Type of activation function for the output layer    
         'G_optim'         : 'AdamW',                    # Generator: Optimiser
+        
+        'RLR'             : 0.003,                      # Baseline Classifier: Learning rate
+        'RB1'             : 0.9,                        # Baseline Classifier: Decay rate for first moment estimates
+        'RB2'             : 0.999,                      # Baseline Classifier: Decay rate for second-moment estimates
+        'R_hidden'        : 256,                        # Baseline Classifier: Number of nodes in the hidden layers
+        'R_hidden_no'     : 1,                          # Baseline Classifier: Number of hidden layers   
+        'R_ac_func'       : 'relu',                     # Baseline Classifier: Type of activation function for the hidden layers
+        'R_aco_func'      : 'softmax',                  # Baseline Classifier: Type of activation function for the output layer
+        'R_tau'           : 1,                          # Baseline Classifier: Temperature of gumbel softmax
+        'R_optim'         : 'AdamW',                    # Baseline Classifier: Optimiser
         }
 
 class Params:
@@ -261,7 +271,6 @@ class Params:
         if key=='FX_num' and val is not None: self.set('FX_indeces',get_best_n_features(val))
     
     def set_keys(self,**kwargs):
-        print(locals()['kwargs'])
         for key, val in locals()['kwargs'].items():
             self.set(key,val)
         
