@@ -147,6 +147,8 @@ def hyperopt_Search(P,param_space,objective_func,eval_step=5,max_evals=None):
 
 
 def hyperopt_GD(P,eval_step=5,max_evals=None):
+    P.set('save_step',INF)
+    
     param_space= {
         'FX_num'          : scope.int(hp.quniform('FX_num', 200, 500, q=1)),
         
@@ -170,27 +172,31 @@ def hyperopt_GD(P,eval_step=5,max_evals=None):
     F = ds.get_data(P)
     P.log("Data loaded.")
     
+    if P.get('CUDA') and torch.cuda.is_available(): floatTensor = torch.cuda.FloatTensor
+    else: floatTensor = torch.FloatTensor
+    
     def obj(args):
         P0 = P.copy()
         P0.update(args)
-        P0.set('save_step',P0.get('epochs_GD'))
         P0.log("Check Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt')
 
         DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P0, ds.select_features(F,P0.get('FX_indeces')))
         P0.log(f"Number of batches: Labelled = {len(DL_L)} | Unlabelled = {len(DL_U_iter)} | Validation = {len(DL_V)}")
             
-        perf_mat = np.empty(shape=(4,P.get('runs')))
+        perf_mat = np.empty(shape=(P.get('runs')))
         for run in range(P0.get('runs')):
-            G, D, mat_accuracy, mat_f1_score = GAN.train_GD(P0, DL_L, DL_U_iter, DL_V, name=P0.get('name')+'_%d'%run,print_savestep=False)
-
-            perf_mat[0,run] = mat_accuracy[0,-1]
-            perf_mat[1,run] = mat_accuracy[1,-1]
-            perf_mat[2,run] = mat_f1_score[0,-1]
-            perf_mat[3,run] = mat_f1_score[1,-1] 
+            G, D, _, _ = GAN.train_GD(P0, DL_L, DL_U_iter, DL_V, name=P0.get('name')+'_%d'%run)
+            G.eval();D.eval();
             
-        perf = np.mean(perf_mat,axis=1)
-        val = sum((0.5-min(0.5,x))**2 for x in perf)
-        P0.log(f"loss = {val} [F1: G = {perf[2]:.5f} D = {perf[3]:.5f}] [Accuracy: G = {perf[0]:.5f} D = {perf[1]:.5f}]",name='hyperopt')
+            YV = floatTensor(pp.get_one_hot_labels(P0,num=500))
+            Z = floatTensor(np.random.normal(0, 1, (YV.shape[0], P.get('noise_shape'))))
+            WV = torch.cat((G(torch.cat((Z,YV),dim=1)),YV),dim=1)
+            FV = floatTensor(WV.shape[0],1).fill_(0.0)
+            
+            perf_mat[run] = calc_accuracy(D(WV),FV)
+            
+        val = np.mean((0.5-perf_mat)**2)
+        P0.log(f"loss = {val:.5f} Accuracy D = {np.mean(perf_mat):.5f}",name='hyperopt')
         return val
  
     hyperopt_Search(P,param_space,obj,eval_step=eval_step,max_evals=max_evals)

@@ -47,7 +47,7 @@ def train_Base(P, DL_L, DL_U_iter, DL_V, name=None):
                 mat_f1_score[0,idx] = np.mean(mat2)
     return R, mat_accuracy, mat_f1_score
  
-def train_GD(P, DL_L, DL_U_iter, DL_V, mat_accuracy=None, mat_f1_score=None, name=None, print_savestep=True):
+def train_GD(P, DL_L, DL_U_iter, DL_V, mat_accuracy=None, mat_f1_score=None, name=None):
     if name is None:
         name = P.get('name')
         
@@ -188,9 +188,8 @@ def train_GD(P, DL_L, DL_U_iter, DL_V, mat_accuracy=None, mat_f1_score=None, nam
             mat_f1_score[0,idx] = np.mean(G_f1)
             mat_f1_score[1,idx] = np.mean(D_f1)
             
-            if print_savestep:
-                logString = f"[{name}] [Epoch {epoch+1}/{P.get('epochs')}] [G F1: {mat_f1_score[0,idx]} acc: {acc_G}] [D F1: {mat_f1_score[1,idx]} acc: {acc_D} | vs Real: {D_acc[0]} | vs G: {D_acc[1]}]"
-                P.log(logString,save=True) 
+            logString = f"[{name}] [Epoch {epoch+1}/{P.get('epochs')}] [G F1: {mat_f1_score[0,idx]} acc: {acc_G}] [D F1: {mat_f1_score[1,idx]} acc: {acc_D} | vs Real: {D_acc[0]} | vs G: {D_acc[1]}]"
+            P.log(logString,save=True) 
             
     return G, D, mat_accuracy, mat_f1_score
         
