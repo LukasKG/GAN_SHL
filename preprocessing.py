@@ -127,6 +127,8 @@ class Permanent_Dataloader:
     def __init__(self, dataloader):
         self.dataloader = dataloader
         self.iterator = iter(self.dataloader)
+    def __len__(self):
+        return len(self.dataloader)
     def get_next(self):
         try:
             data = next(self.iterator)

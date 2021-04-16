@@ -38,9 +38,9 @@ activation_functions = {
 #  Generator
 # -------------------
 
-class Generator_01(nn.Module):
+class Generator(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, hidden_no=1, ac_func='leaky', aco_func='tanh'):
-        super(Generator_01, self).__init__()
+        super(Generator, self).__init__()
         self.ac = activation_functions[ac_func]
         self.aco = activation_functions[aco_func]
         self.input = nn.Linear(input_size, hidden_size)
@@ -49,6 +49,8 @@ class Generator_01(nn.Module):
             self.hidden.append(nn.Linear(hidden_size, hidden_size))
         self.hidden = nn.ModuleList(self.hidden)
         self.output = nn.Linear(hidden_size, output_size)
+
+        self.apply(weights_init_normal)
 
     def forward(self, x):
         out = self.input(x)
@@ -65,9 +67,9 @@ class Generator_01(nn.Module):
 #  Discriminator
 # -------------------    
 
-class Discriminator_01(nn.Module):
+class Discriminator(nn.Module):
     def __init__(self, input_size, hidden_size, hidden_no=1, ac_func='leaky', aco_func='sig'):
-        super(Discriminator_01, self).__init__()
+        super(Discriminator, self).__init__()
         self.ac = activation_functions[ac_func]
         self.aco = activation_functions[aco_func]
         self.input = nn.Linear(input_size, hidden_size)
@@ -76,6 +78,8 @@ class Discriminator_01(nn.Module):
             self.hidden.append(nn.Linear(hidden_size, hidden_size))
         self.hidden = nn.ModuleList(self.hidden)
         self.output = nn.Linear(hidden_size, 1)
+        
+        self.apply(weights_init_normal)
 
     def forward(self, x):
         out = self.input(x)
@@ -92,10 +96,10 @@ class Discriminator_01(nn.Module):
 #  Classifier
 # -------------------
 
-class Classifier_01(nn.Module):
+class Classifier(nn.Module):
     ''' Gumbel Softmax (Discrete output is default) '''
     def __init__(self, input_size, hidden_size, num_classes, hidden_no=1, ac_func='relu', aco_func='gumbel', hard=True, tau=1):
-        super(Classifier_01, self).__init__()
+        super(Classifier, self).__init__()
         self.ac = activation_functions[ac_func]
         if aco_func == 'gumbel':
             def gumbel(logits): return F.gumbel_softmax(logits, tau=tau, hard=hard, eps=1e-10, dim=1)
@@ -109,6 +113,8 @@ class Classifier_01(nn.Module):
         self.hidden = nn.ModuleList(self.hidden)
         self.output = nn.Linear(hidden_size, num_classes)
         self.soft = activation_functions['softmax']
+        
+        self.apply(weights_init_normal)
         
     def forward(self, x):
         out = self.input(x)
@@ -132,56 +138,72 @@ def weights_init_normal(m):
         nn.init.xavier_uniform_(m.weight)
         m.bias.data.fill_(0.01)
 
-def new_G(P,input_size,hidden_size,output_size):
-    if P.get('G_no') == 1:
-        G = Generator_01(input_size, hidden_size, output_size, hidden_no=P.get('G_hidden_no'), ac_func=P.get('G_ac_func'), aco_func=P.get('G_aco_func'))
-    # elif P.get('G_no') == 2:
-    #     G = Generator_02(input_size, hidden_size, output_size)
-    # elif P.get('G_no') == 3:
-    #     G = Generator_03(input_size, hidden_size, output_size)
-    else:
-        P.log("No model Generator_%s"%str(P.get('G_no')).zfill(2),error=True)
-        return None
-    
-    G.apply(weights_init_normal)
-    if P.get('print_epoch'):
-        P.log("Created new generator.")
-    # save_Model(get_string_name(P.get('name'),run,'G'),G)
-    return G
+# -------------------
+#  Save/Load Networks
+# -------------------
 
-def new_D(P,input_size,hidden_size):
-    if P.get('D_no') == 1:
-        D = Discriminator_01(input_size, hidden_size, hidden_no=P.get('D_hidden_no'), ac_func=P.get('D_ac_func'), aco_func=P.get('D_aco_func'))
-    # elif P.get('D_no') == 2:
-    #     D = Discriminator_02(input_size, hidden_size)
-    # elif P.get('D_no') == 3:
-    #     D = Discriminator_03(input_size, hidden_size)
-    else:
-        P.log("No model Discriminator_%s"%str(P.get('D_no')).zfill(2),error=True)
-        return None
-    
-    D.apply(weights_init_normal)
-    if P.get('print_epoch'):
-        P.log("Created new discriminator.")
-    # save_Model(get_string_name(P.get('name'),run,'D'),D)
-    return D
+def get_string_name(name,model,num=None):
+    assert model in ['G','D','C','R']
 
-def new_C(P,input_size,hidden_size,num_classes,hidden_no,ac_func,aco_func='gumbel',hard=True,tau=1):
-    if P.get('C_no') == 1:
-        C = Classifier_01(input_size, hidden_size, num_classes, hidden_no=hidden_no, ac_func=ac_func, aco_func=aco_func, hard=hard, tau=tau)
-    # elif P.get('C_no') == 2:
-    #     C = Classifier_02(input_size, hidden_size, num_classes)
-    # elif P.get('C_no') == 3:
-    #     C = Classifier_03(input_size, hidden_size, num_classes)
+    if num is None:
+        return '%s_%s'%(name,model)
     else:
-        P.log("No model Classifier_%s"%str(P.get('C_no')).zfill(2),error=True)
-        return None
+        return '%s_n%d_%s'%(name,num,model)
     
-    C.apply(weights_init_normal)
-    if P.get('print_epoch'):
-        P.log("Created new classifier.")
-    # save_Model(get_string_name(P.get('name'),run,'C'),C)
-    return C
+def save_Model(name,model):
+    make_dir_mod()
+    PATH = M_PATH+name+'.pt'
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        torch.save(model, PATH)
+#    log("Saved model "+name)
+
+def save_R(name,R,num=None):
+    save_Model(get_string_name(name,'R',num),R)
+
+def save_GAN(name,G,D,C,R=None,num=None):
+    save_Model(get_string_name(name,'G',num),G)
+    save_Model(get_string_name(name,'D',num),D)
+    save_Model(get_string_name(name,'C',num),C)
+    if R is not None:
+        save_R(name,R,num)
+    
+def activate_CUDA(*args):
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    else:
+        device = torch.device('cpu')
+    if len(args)>1:
+        return [model.to(device) for model in args]
+    else:
+        return args[0].to(device)
+    
+def load_G(P):
+    input_size, output_size = P.get_IO_shape()
+    G = Generator(input_size=P.get('noise_shape')+output_size, hidden_size=P.get('G_hidden'), output_size=input_size, hidden_no=P.get('G_hidden_no'), ac_func=P.get('G_ac_func'), aco_func=P.get('G_aco_func'))
+    if P.get('CUDA'): return activate_CUDA(G)
+    else: return G
+    
+def load_D(P):
+    input_size, output_size = P.get_IO_shape()
+    D = Discriminator(input_size=input_size+output_size, hidden_size=P.get('D_hidden'), hidden_no=P.get('D_hidden_no'), ac_func=P.get('D_ac_func'), aco_func=P.get('D_aco_func'))
+    if P.get('CUDA'): return activate_CUDA(D)
+    else: return D
+    
+def load_C(P):
+    input_size, output_size = P.get_IO_shape()
+    C = Classifier(input_size=input_size, hidden_size=P.get('C_hidden'), num_classes=output_size, hidden_no=P.get('C_hidden_no'), ac_func=P.get('C_ac_func'), aco_func=P.get('C_aco_func'), hard=True, tau=P.get('C_tau'))
+    if P.get('CUDA'): return activate_CUDA(C)
+    else: return C
+ 
+def load_R(P):
+    input_size, output_size = P.get_IO_shape()
+    R = Classifier(input_size=input_size, hidden_size=P.get('R_hidden'), num_classes=output_size, hidden_no=P.get('R_hidden_no'), ac_func=P.get('R_ac_func'), aco_func=P.get('R_aco_func'), hard=True, tau=P.get('R_tau'))
+    if P.get('CUDA'): return activate_CUDA(R)
+    else: return R   
+ 
+def load_GAN(P):
+    return load_G(P), load_D(P), load_C(P)
 
 # -------------------
 #  Loss
@@ -220,125 +242,6 @@ def get_optimiser(P,model,params):
         return torch.optim.AdamW(params, lr=P.get(model+'LR'), betas=(P.get(model+'B1'), P.get(model+'B2')))
     elif optim == 'SGD':
         return torch.optim.SGD(params, lr=P.get(model+'LR'), momentum=P.get(model+'B1'))
-
-# -------------------
-#  Save/Load Networks
-# -------------------
-
-def get_string_name(name,model,num=None):
-    assert model in ['G','D','C','R']
-
-    if num is None:
-        return '%s_%s'%(name,model)
-    else:
-        return '%s_n%d_%s'%(name,num,model)
-    
-def save_Model(name,model):
-    make_dir_mod()
-    PATH = M_PATH+name+'.pt'
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        torch.save(model, PATH)
-#    log("Saved model "+name)
-
-def save_Ref(name,R,num=None):
-    save_Model(get_string_name(name,'R',num),R)
-
-def save_GAN(name,G,D,C,R=None,num=None):
-    save_Model(get_string_name(name,'G',num),G)
-    save_Model(get_string_name(name,'D',num),D)
-    save_Model(get_string_name(name,'C',num),C)
-    if R is not None:
-        save_Ref(name,R,num)
-    
-def activate_CUDA(*args):
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
-    else:
-        device = torch.device('cpu')
-    if len(args)>1:
-        return [model.to(device) for model in args]
-    else:
-        return args[0].to(device)
-    
-def load_Model(P,name):
-    PATH = M_PATH+name+'.pt'
-    
-    if not os.path.isfile(PATH):
-        if P.get('print_epoch'):
-            P.log("Model \"%s\" does not exist."%PATH,error=False)
-        return None
-    
-    model = torch.load(PATH)
-    model.eval()
-    
-    P.log("Loaded model %s."%name)
-    
-    return model
-    
-def load_Pretrain_C(P):
-    PATH = 'pretrain/'+P.get('pretrain')
-    
-    # Check for a pretrained model for the individual run
-    if os.path.isfile(PATH+'.pt'):
-        model = torch.load(PATH+'.pt')
-        P.log("Loaded pretrained classifier %s."%(P.get('pretrain')))
-    # Check for a general pretrained model
-    elif os.path.isfile(PATH+'.pt'):
-        model = torch.load(PATH+'.pt')
-        P.log("Loaded pretrained classifier %s."%(P.get('pretrain')))
-    # No pretrained model found
-    else:
-        P.log("Did not find pretrained classifier %s."%(P.get('pretrain')))
-        return None
-    
-    model.eval()
-    if P.get('CUDA'):
-        return activate_CUDA(model)
-    else:
-        return model
-
-def load_Ref(P,name=None):
-    input_size, output_size = P.get_IO_shape()
-    if name is None:
-        name = P.get('name')
-        
-    # Load Classifier
-    R = load_Model(P,name+'_R')
-    if R is None:
-        R = new_C(P, input_size=input_size, hidden_size=P.get('R_hidden'), num_classes=output_size, hidden_no=P.get('R_hidden_no'), ac_func=P.get('R_ac_func'), aco_func=P.get('R_aco_func'), hard=True, tau=P.get('R_tau'))
-        
-    if P.get('CUDA'):
-        return activate_CUDA(R)
-    else:
-        return R
-    
-def load_GAN(P,name=None):
-    input_size, output_size = P.get_IO_shape()
-    if name is None:
-        name = P.get('name')
-
-    # Load Generator
-    G = load_Model(P,name+'_G')
-    if G is None:
-        G = new_G(P, input_size=P.get('noise_shape')+output_size, hidden_size=P.get('G_hidden'), output_size=input_size)
-        
-    # Load Discriminator
-    D = load_Model(P,name+'_D')
-    if D is None:
-        D = new_D(P, input_size=input_size+output_size, hidden_size=P.get('D_hidden'))
-        
-    # Load Classifier
-    C = load_Model(P,name+'_C')
-    if C is None and P.get('pretrain') is not None:
-        C = load_Pretrain_C(P)
-    if C is None:
-        C = new_C(P, input_size=input_size, hidden_size=P.get('C_hidden'), num_classes=output_size, hidden_no=P.get('C_hidden_no'), ac_func=P.get('C_ac_func'), aco_func=P.get('C_aco_func'), hard=True, tau=P.get('C_tau'))
-       
-    if P.get('CUDA'):
-        return activate_CUDA(G, D, C)
-    else:
-        return G, D, C
 
 # -------------------
 #  Clear

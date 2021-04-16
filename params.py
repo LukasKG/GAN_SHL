@@ -137,9 +137,10 @@ DEFAULT_PARAMS = {
         'oversampling'    : True,                       # True: oversample all minority classes  
         'PCA_n_components': None,                       # Number of components for PCA
         
-        'epochs'          : 500,                        # Number of training epochs
+        'epochs'          : 500,                        # Number of regular training epochs
+        'epochs_GD'       : 0,                          # Number of G/D training epochs
         'save_step'       : 10,                         # Number of epochs after which results are stored
-        'batch_size'      : 128,                        # Number of samples per batch
+        'batch_size'      : 512,                        # Number of samples per batch
         'noise_shape'     : 100,                        # Size of random noise Z
 
         'G_no'            : 1,                          # Model number of the new generator

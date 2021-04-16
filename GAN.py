@@ -21,12 +21,12 @@ def train_Base(P, DL_L, DL_U_iter, DL_V, name=None):
     if P.get('CUDA') and torch.cuda.is_available():
         R_Loss.cuda()
 
-    mat_accuracy = np.zeros((1, int(P.get('epochs')/P.get('save_step'))+1))
-    mat_f1_score = np.zeros((1, int(P.get('epochs')/P.get('save_step'))+1))
-    R = network.load_Ref(P,name)  
+    mat_accuracy = np.zeros((1, int((P.get('epochs_GD')+P.get('epochs'))/P.get('save_step'))+1))
+    mat_f1_score = np.zeros((1, int((P.get('epochs_GD')+P.get('epochs'))/P.get('save_step'))+1))
+    R = network.load_R(P)  
     optimizer_R = network.get_optimiser(P,'C',R.parameters())
     
-    for epoch in range(P.get('epochs')):
+    for epoch in range(P.get('epochs_GD'),(P.get('epochs_GD')+P.get('epochs'))):
         R.train()
         for i, (X1, Y1) in enumerate(DL_L, 1):
             optimizer_R.zero_grad()
@@ -47,6 +47,152 @@ def train_Base(P, DL_L, DL_U_iter, DL_V, name=None):
                 mat_f1_score[0,idx] = np.mean(mat2)
     return R, mat_accuracy, mat_f1_score
  
+def train_GD(P, DL_L, DL_U_iter, DL_V, mat_accuracy=None, mat_f1_score=None, name=None, print_savestep=True):
+    if name is None:
+        name = P.get('name')
+        
+    D_Loss = torch.nn.BCELoss()
+
+    if P.get('CUDA') and torch.cuda.is_available():
+        D_Loss.cuda()
+        floatTensor = torch.cuda.FloatTensor
+    else:
+        floatTensor = torch.FloatTensor
+
+    if mat_accuracy is None:
+        mat_accuracy = np.zeros((2, int(P.get('epochs_GD')/P.get('save_step'))+1))
+    if mat_f1_score is None:
+        mat_f1_score = np.zeros((2, int(P.get('epochs_GD')/P.get('save_step'))+1))
+
+    G = network.load_G(P)
+    D = network.load_D(P)
+
+    optimizer_G = network.get_optimiser(P,'G',G.parameters())
+    optimizer_D = network.get_optimiser(P,'D',D.parameters())
+
+    for epoch in range(P.get('epochs_GD')):
+        
+        if P.get('print_epoch'):
+            loss_G = []
+            loss_D = []
+        
+        G.train();D.train();
+        for i, (X1, Y1) in enumerate(DL_L, 1):
+            
+            # -------------------
+            #  Train the discriminator to label real samples
+            # -------------------
+            W1 = torch.cat((X1,Y1),dim=1)
+            R1 = floatTensor(W1.shape[0], 1).fill_(1.0)
+            
+            optimizer_D.zero_grad()
+            A1 = D(W1)
+            loss = D_Loss(A1, R1)
+            loss.backward()
+            optimizer_D.step()
+            if P.get('print_epoch'):
+                loss_D.append(loss)
+            
+            # -------------------
+            #  Create Synthetic Data
+            # -------------------     
+            optimizer_G.zero_grad()
+            if P.get('G_label_sample'):
+                # Selected Labels from a uniform distribution of available labels
+                Y3 = floatTensor(pp.get_one_hot_labels(P,num=Y1.shape[0]*P.get('G_label_factor')))
+            else:
+                # Select labels from current training batch
+                Y3 = torch.cat(([Y1 for _ in range(P.get('G_label_factor'))]),dim=0)
+            
+            Z = floatTensor(np.random.normal(0, 1, (Y3.shape[0], P.get('noise_shape'))))
+            I3 = torch.cat((Z,Y3),dim=1)
+            X3 = G(I3)
+            W3 = torch.cat((X3,Y3),dim=1)
+            
+            # -------------------
+            #  Train the generator to fool the discriminator
+            # -------------------
+            A3 = D(W3)
+            R3 = floatTensor(W3.shape[0], 1).fill_(1.0)
+            loss = D_Loss(A3, R3)
+            loss.backward()
+            optimizer_G.step()
+            if P.get('print_epoch'):
+                loss_G.append(loss)
+            
+            # -------------------
+            #  Train the discriminator to label synthetic samples
+            # -------------------
+            optimizer_D.zero_grad()
+            A3 = D(W3.detach())
+            F3 = floatTensor(W3.shape[0], 1).fill_(0.0)
+            loss = D_Loss(A3, F3)
+            loss.backward()
+            optimizer_D.step()
+            if P.get('print_epoch'):
+                loss_D.append(loss)
+            
+        
+        # -------------------
+        #  Post Epoch
+        # -------------------
+        
+        if P.get('print_epoch'):
+            logString = f"[Epoch {epoch+1}/{P.get('epochs')}] [G loss: {np.mean([loss.item() for loss in loss_G])}] [D loss: {np.mean([loss.item() for loss in loss_D])}]"
+            P.log(logString,save=False)
+        
+        if (epoch+1)%P.get('save_step') == 0:
+            idx = int(epoch/P.get('save_step'))+1
+            
+            D_acc = np.zeros((2,len(DL_V)))
+
+            D_f1 = np.zeros((2,len(DL_V))) 
+            G_f1 = np.zeros((len(DL_V)))
+
+            G.eval();D.eval()
+            
+            with torch.no_grad():
+                for i, (XV, YV) in enumerate(DL_V):
+                    
+                    # Generate Synthetic Data
+                    Z = floatTensor(np.random.normal(0, 1, (YV.shape[0], P.get('noise_shape'))))
+                    IV = torch.cat((Z,YV),dim=1)
+                    XG = G(IV)
+                    
+                    # Estimate Discriminator Accuracy
+                    WV1 = torch.cat((XV,YV),dim=1)
+                    WV3 = torch.cat((XG,YV),dim=1)
+                    RV1 = floatTensor(WV1.shape[0],1).fill_(1.0)
+                    FV3 = floatTensor(WV3.shape[0],1).fill_(0.0)
+                    RV3 = floatTensor(WV3.shape[0],1).fill_(1.0)
+                    
+                    AV1 = D(WV1)
+                    AV3 = D(WV3)
+                    
+                    D_acc[0,i] = calc_accuracy(AV1,RV1)
+                    D_acc[1,i] = calc_accuracy(AV3,FV3)
+                                         
+                    D_f1[0,i] = calc_f1score(AV1,RV1)
+                    D_f1[1,i] = calc_f1score(AV3,FV3)
+
+                    G_f1[i] = calc_f1score(AV3,RV3)
+
+                    
+            D_acc = np.mean(D_acc,axis=1)    
+            acc_D = np.mean(D_acc)
+            mat_accuracy[1,idx] = acc_D
+        
+            acc_G = 1.0 - D_acc[1]
+            mat_accuracy[0,idx] = acc_G
+
+            mat_f1_score[0,idx] = np.mean(G_f1)
+            mat_f1_score[1,idx] = np.mean(D_f1)
+            
+            if print_savestep:
+                logString = f"[{name}] [Epoch {epoch+1}/{P.get('epochs')}] [G F1: {mat_f1_score[0,idx]} acc: {acc_G}] [D F1: {mat_f1_score[1,idx]} acc: {acc_D} | vs Real: {D_acc[0]} | vs G: {D_acc[1]}]"
+                P.log(logString,save=True) 
+            
+    return G, D, mat_accuracy, mat_f1_score
         
 def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
     
@@ -80,14 +226,15 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
     #  Metrics
     # -------------------
 
-    mat_accuracy = np.zeros((3, int(P.get('epochs')/P.get('save_step'))+1))
-    mat_f1_score = np.zeros((3, int(P.get('epochs')/P.get('save_step'))+1))
+    mat_accuracy = np.zeros((3, int((P.get('epochs_GD')+P.get('epochs'))/P.get('save_step'))+1))
+    mat_f1_score = np.zeros((3, int((P.get('epochs_GD')+P.get('epochs'))/P.get('save_step'))+1))
         
     # -------------------
     #  Networks
     # -------------------
     
-    G, D, C = network.load_GAN(P,name)
+    G, D, mat_accuracy, mat_f1_score = train_GD(P, DL_L, DL_U_iter, DL_V, mat_accuracy, mat_f1_score, name)
+    C = network.load_C(P)
 
     # -------------------
     #  Optimizers
@@ -101,7 +248,7 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
     #  Training
     # -------------------
 
-    for epoch in range(P.get('epochs')):
+    for epoch in range(P.get('epochs_GD'),(P.get('epochs_GD')+P.get('epochs'))):
         
         if P.get('print_epoch'):
             running_loss_G = 0.0
@@ -251,7 +398,7 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
         # -------------------
         
         if P.get('print_epoch'):
-            logString = "[Epoch %d/%d] [G loss: %f] [D loss: %f] [C loss: %f]"%(epoch+1, P.get('epochs'), running_loss_G/(i), running_loss_D/(i), running_loss_C/(i))
+            logString = "[Epoch %d/%d] [G loss: %f] [D loss: %f] [C loss: %f]"%(epoch+1, (P.get('epochs_GD')+P.get('epochs')), running_loss_G/(i), running_loss_D/(i), running_loss_C/(i))
             P.log(logString,save=False)
         
         if (epoch+1)%P.get('save_step') == 0:
@@ -298,9 +445,9 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
                                         
                     C_acc[i] = calc_accuracy(PV, YV)
                     
-                    
                     D_f1[0,i] = calc_f1score(AV1,RV1)
                     D_f1[1,i] = calc_f1score(AV2,FV2)
+                    D_f1[2,i] = calc_f1score(AV3,FV3)
 
                     C_f1[i] = calc_f1score(PV, YV)
                     G_f1[i] = calc_f1score(AV3,RV3)
@@ -322,7 +469,7 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             mat_f1_score[1,idx] = np.mean(D_f1)
             mat_f1_score[2,idx] = np.mean(C_f1)
             
-            logString = f"[{name}] [Epoch {epoch+1}/{P.get('epochs')}] [G F1: {mat_f1_score[0,idx]} acc: {acc_G}] [D F1: {mat_f1_score[1,idx]} acc: {acc_D} | vs Real: {D_acc[0]} | vs G: {D_acc[2]} | vs C: {D_acc[1]}] [C F1: {mat_f1_score[2,idx]} acc: {acc_C} | vs Real: {acc_C_real} | vs D: {acc_C_vs_D}]"
+            logString = f"[{name}] [Epoch {epoch+1}/{(P.get('epochs_GD')+P.get('epochs'))}] [G F1: {mat_f1_score[0,idx]} acc: {acc_G}] [D F1: {mat_f1_score[1,idx]} acc: {acc_D} | vs Real: {D_acc[0]} | vs G: {D_acc[2]} | vs C: {D_acc[1]}] [C F1: {mat_f1_score[2,idx]} acc: {acc_C} | vs Real: {acc_C_real} | vs D: {acc_C_vs_D}]"
             P.log(logString,save=True) 
                    
     # -------------------
