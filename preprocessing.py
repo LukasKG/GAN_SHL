@@ -142,6 +142,8 @@ class Permanent_Dataloader:
 def get_dataloader(P,X,Y=None,batch_size=None):
     # create your datset
     if Y is not None:
+        if Y.ndim == 1 or Y.shape[1]==1:
+            Y = labels_to_one_hot(P,Y)
         dataset = torch.utils.data.TensorDataset(*get_tensor(X,Y,cuda=P.get('CUDA')))
     else:
         dataset = torch.utils.data.TensorDataset(*get_tensor(X,cuda=P.get('CUDA')))
@@ -168,9 +170,9 @@ def get_perm_dataloader(P,X,Y=None,batch_size=None):
 def get_all_dataloader(P, datasets, sample_no=-1):
     F = perform_preprocessing(P, datasets, sample_no)
 
-    DL_L = get_dataloader(P, F[0][0], labels_to_one_hot(P,F[0][1]))
-    DL_U_iter = get_perm_dataloader(P, F[1][0], labels_to_one_hot(P,F[1][1]))
-    DL_V = get_dataloader(P, F[2][0], labels_to_one_hot(P,F[2][1]), batch_size=1024) 
+    DL_L = get_dataloader(P, *F[0])
+    DL_U_iter = get_perm_dataloader(P, *F[1])
+    DL_V = get_dataloader(P, *F[2], batch_size=1024) 
     
     return DL_L, DL_U_iter, DL_V
 

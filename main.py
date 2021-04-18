@@ -148,6 +148,7 @@ def hyperopt_Search(P,param_space,objective_func,eval_step=5,max_evals=None):
 
 def hyperopt_GD(P,eval_step=5,max_evals=None):
     P.set('save_step',INF)
+    num_G_samples = 500
     
     param_space= {
         'FX_num'          : scope.int(hp.quniform('FX_num', 200, 500, q=1)),
@@ -180,23 +181,22 @@ def hyperopt_GD(P,eval_step=5,max_evals=None):
         P0.update(args)
         P0.log("Check Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt')
 
-        DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P0, ds.select_features(F,P0.get('FX_indeces')))
-        P0.log(f"Number of batches: Labelled = {len(DL_L)} | Unlabelled = {len(DL_U_iter)} | Validation = {len(DL_V)}")
-            
-        perf_mat = np.empty(shape=(P.get('runs')))
+        F0 = ds.select_features(F,P0.get('FX_indeces'))
+        DL_L = pp.get_dataloader(P0, *F0[0])
+        DL_V = pp.get_dataloader(P0, *F0[2], batch_size=1024) 
+        
+        perf_mat = np.empty(shape=(2,P.get('runs')))
         for run in range(P0.get('runs')):
-            G, D, _, _ = GAN.train_GD(P0, DL_L, DL_U_iter, DL_V, name=P0.get('name')+'_%d'%run)
+            G, D, _, _ = GAN.train_GD(P0, DL_L, DL_V, name=P0.get('name')+'_%d'%run)
             G.eval();D.eval();
             
-            YV = floatTensor(pp.get_one_hot_labels(P0,num=500))
-            Z = floatTensor(np.random.normal(0, 1, (YV.shape[0], P.get('noise_shape'))))
-            WV = torch.cat((G(torch.cat((Z,YV),dim=1)),YV),dim=1)
-            FV = floatTensor(WV.shape[0],1).fill_(0.0)
-            
-            perf_mat[run] = calc_accuracy(D(WV),FV)
-            
-        val = np.mean((0.5-perf_mat)**2)
-        P0.log(f"loss = {val:.5f} Accuracy D = {np.mean(perf_mat):.5f}",name='hyperopt')
+            with torch.no_grad():
+                YV = floatTensor(pp.get_one_hot_labels(P0,num=num_G_samples)) 
+                perf_mat[0,run] = calc_accuracy(D(torch.cat((G(torch.cat((floatTensor(np.random.normal(0,1,(num_G_samples,P.get('noise_shape')))),YV),dim=1)),YV),dim=1)),floatTensor(num_G_samples,1).fill_(0.0))
+                perf_mat[1,run] = np.mean([calc_accuracy(D(torch.cat((XV,YV),dim=1)),floatTensor(XV.shape[0],1).fill_(1.0)) for XV, YV in DL_V])
+                
+        val = np.mean((0.5-perf_mat[0])**2) + 0.1 * np.mean((1-perf_mat[1])**2)
+        P0.log(f"loss = {val:.5f} Accuracy D = {np.mean(perf_mat):.5f} | vs G = {np.mean(perf_mat[0]):.5f} | vs real = {np.mean(perf_mat[1]):.5f}",name='hyperopt')
         return val
  
     hyperopt_Search(P,param_space,obj,eval_step=eval_step,max_evals=max_evals)
@@ -628,7 +628,7 @@ def main():
         
         #PCA_n_components = 0.85,
 
-        epochs = 2000,
+        epochs = 1500,
         save_step = 2,
         runs = 3,
         
@@ -652,21 +652,21 @@ def main():
         C_optim = 'AdamW', 
         C_tau = 3.962724498941699, 
         
-        DB1 = 0.17760140736728408, 
-        DLR = 0.0001856573882131211, 
-        D_ac_func = 'sig', 
-        D_hidden = 32, 
-        D_hidden_no = 7, 
+        DB1 = 0.0894455184082544, 
+        DLR = 0.0003286641286728747, 
+        D_ac_func = 'leaky', 
+        D_hidden = 3797, 
+        D_hidden_no = 6, 
         D_optim = 'SGD', 
         
-        FX_num = 38, 
+        FX_num = 216, 
         
-        GB1 = 0.04999825986171865, 
-        GLR = 0.03250081887833738, 
-        G_ac_func = 'leaky', 
-        G_hidden = 157, 
-        G_hidden_no = 4, 
-        G_optim = 'SGD', 
+        GB1 = 0.06092464422507114, 
+        GLR = 0.06181333027871895, 
+        G_ac_func = 'leaky20', 
+        G_hidden = 87, 
+        G_hidden_no = 0, 
+        G_optim = 'SGD',
         
         batch_size = 256,
         
@@ -697,14 +697,23 @@ def main():
             oversampling = False,
             )
         
-        for cross_val in ['user','none']:
-            for basic_train in [True,False]:
+        for cross_val in ['user']:
+            for basic_train in [True]:
                    P.set_keys(
                         name = '_'.join(['eval','C',('Complete' if basic_train else 'GAN'),cross_val,'cross']),
                         C_basic_train = basic_train,
                         Cross_val = cross_val,
                         )
                    evaluate(P,P_val)
+        
+        # for cross_val in ['user','none']:
+        #     for basic_train in [True,False]:
+        #            P.set_keys(
+        #                 name = '_'.join(['eval','C',('Complete' if basic_train else 'GAN'),cross_val,'cross']),
+        #                 C_basic_train = basic_train,
+        #                 Cross_val = cross_val,
+        #                 )
+        #            evaluate(P,P_val)
 
     if args.SEARCH:
         hyperopt_GAN(P_search,eval_step=5,max_evals=args.max_evals)
@@ -716,7 +725,7 @@ def main():
     
     if args.SEARCH_GD:
         P_GD = P_search.copy()
-        P_GD.set_keys(name='Hyperopt_GD_1.0')
+        P_GD.set_keys(name='Hyperopt_GD_1.1')
         hyperopt_GD(P_GD,eval_step=5,max_evals=args.max_evals)
     
     if args.MRMR:

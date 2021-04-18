@@ -47,7 +47,7 @@ def train_Base(P, DL_L, DL_U_iter, DL_V, name=None):
                 mat_f1_score[0,idx] = np.mean(mat2)
     return R, mat_accuracy, mat_f1_score
  
-def train_GD(P, DL_L, DL_U_iter, DL_V, mat_accuracy=None, mat_f1_score=None, name=None):
+def train_GD(P, DL_L, DL_V, mat_accuracy=None, mat_f1_score=None, name=None):
     if name is None:
         name = P.get('name')
         
@@ -232,7 +232,7 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
     #  Networks
     # -------------------
     
-    G, D, mat_accuracy, mat_f1_score = train_GD(P, DL_L, DL_U_iter, DL_V, mat_accuracy, mat_f1_score, name)
+    G, D, mat_accuracy, mat_f1_score = train_GD(P, DL_L, DL_V, mat_accuracy, mat_f1_score, name)
     C = network.load_C(P)
 
     # -------------------
