@@ -204,7 +204,7 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
         name = P.get('name')
     plt.close('all')
     
-    # -------------------s
+    # -------------------
     #  CUDA
     # -------------------
     

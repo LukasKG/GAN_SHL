@@ -139,6 +139,7 @@ DEFAULT_PARAMS = {
         
         'epochs'          : 500,                        # Number of regular training epochs
         'epochs_GD'       : 0,                          # Number of G/D training epochs
+        'GD_ratio'        : None,                       # If given, divides epochs into epochs and epochs_GD
         'save_step'       : 10,                         # Number of epochs after which results are stored
         'batch_size'      : 512,                        # Number of samples per batch
         'noise_shape'     : 100,                        # Size of random noise Z
@@ -270,6 +271,10 @@ class Params:
         self.params[key] = val
         if key=='channels': self.update_channels()
         if key=='FX_num' and val is not None: self.set('FX_indeces',get_best_n_features(val))
+        if key=='GD_ratio' and val is not None: 
+            epochs = self.get('epochs')
+            self.set('epochs_GD',int(round(val*epochs)))
+            self.set('epochs',epochs-self.get('epochs_GD'))
     
     def set_keys(self,**kwargs):
         for key, val in locals()['kwargs'].items():
