@@ -101,13 +101,15 @@ def is_individual_dataload(param_space):
 def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None):
     P.set('save_step',INF)
     P.set('R_active',False)
-
+    
+    if 'FX_num' in param_space:
+        P.set('FX_num',None)
     F = ds.get_data(P)
     P.log("Data loaded.")
     
     indivual_load = is_individual_dataload(param_space)
     if not indivual_load:
-        DL = pp.get_all_dataloader(P, ds.select_features(F,P.get('FX_indeces')))
+        DL = pp.get_all_dataloader(P,F)
     
     def obj(args):
         P0 = P.copy()
@@ -115,7 +117,9 @@ def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None):
         P0.log("Check Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt')
         
         if indivual_load:
-            DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P0, ds.select_features(F,P0.get('FX_indeces')))
+            if 'FX_num' in args: F0 = ds.select_features(F,P0.get('FX_indeces'))
+            else: F0 = F
+            DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P0,F0)
         else:
             DL_L, DL_U_iter, DL_V = DL
             
@@ -138,12 +142,14 @@ def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None):
 def hyperopt_R(P,param_space,eval_step=5,max_evals=None): 
     P.set('save_step',INF)
     
+    if 'FX_num' in param_space:
+        P.set('FX_num',None)
     F = ds.get_data(P)
     P.log("Data loaded.")
     
     indivual_load = is_individual_dataload(param_space)
     if not indivual_load:
-        DL = pp.get_all_dataloader(P, ds.select_features(F,P.get('FX_indeces')))
+        DL = pp.get_all_dataloader(P,F)
     
     def obj(args):
         P0 = P.copy()
@@ -151,7 +157,9 @@ def hyperopt_R(P,param_space,eval_step=5,max_evals=None):
         P0.log("Check Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt')
         
         if indivual_load:
-            DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P0, ds.select_features(F,P0.get('FX_indeces')))
+            if 'FX_num' in args: F0 = ds.select_features(F,P0.get('FX_indeces'))
+            else: F0 = F
+            DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P0,F0)
         else:
             DL_L, DL_U_iter, DL_V = DL
         
@@ -174,7 +182,9 @@ def hyperopt_R(P,param_space,eval_step=5,max_evals=None):
 
 def hyperopt_GD(P,param_space,eval_step=5,max_evals=None,num_G_samples=500):
     P.set('save_step',INF)
-       
+      
+    if 'FX_num' in param_space:
+        P.set('FX_num',None)
     F = ds.get_data(P)
     P.log("Data loaded.")
     
@@ -183,7 +193,7 @@ def hyperopt_GD(P,param_space,eval_step=5,max_evals=None,num_G_samples=500):
     
     indivual_load = is_individual_dataload(param_space)
     if not indivual_load:
-        DL = pp.get_all_dataloader(P, ds.select_features(F,P.get('FX_indeces')))
+        DL = pp.get_all_dataloader(P,F)
     
     def obj(args):
         P0 = P.copy()
@@ -191,7 +201,8 @@ def hyperopt_GD(P,param_space,eval_step=5,max_evals=None,num_G_samples=500):
         P0.log("Check Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt')
         
         if indivual_load:
-            F0 = ds.select_features(F,P0.get('FX_indeces'))
+            if 'FX_num' in args: F0 = ds.select_features(F,P0.get('FX_indeces'))
+            else: F0 = F
             DL_L = pp.get_dataloader(P0, *F0[0])
             DL_V = pp.get_dataloader(P0, *F0[2], batch_size=1024) 
         else:
