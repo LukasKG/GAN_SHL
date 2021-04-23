@@ -29,56 +29,6 @@ else:
     from .params import Params, save_fig, save_trials, load_trials
     from .plot_confusion_matrix import plot_confusion_matrix
     from . import preprocessing as pp
-
-
-def pytorch_baseline(P):
-    import torch
-    import network
-    
-    #P.set('CUDA',False)
-    P.set('C_aco_func','gumbel')
-   
-    DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, ds.get_data(P)) 
-    
-    input_size, output_size = P.get_IO_shape()
-    C = network.new_C(P,input_size=input_size,hidden_size=P.get('C_hidden'),num_classes=output_size)
-    C_Loss = network.CrossEntropyLoss_OneHot()
-    
-    optim = 'Adam'
-    
-    if optim == 'Adam':
-        optimizer_C = torch.optim.Adam(C.parameters(), lr=0.001, betas=(0.9,0.999))
-    elif optim == 'AdamW':
-        optimizer_C = torch.optim.AdamW(C.parameters(), lr=0.001, betas=(0.9,0.999))
-    elif optim == 'SGD':
-        optimizer_C = torch.optim.SGD(C.parameters(), lr=0.001, momentum=0.9)
-        
-    if P.get('CUDA') and torch.cuda.is_available():
-        device = torch.device('cuda')
-        C.cuda()
-        C_Loss.cuda()
-        P.log("Cuda Training")
-    else:
-        device = torch.device('cpu')
-        P.log("CPU Training")
-    
-    for epoch in range(200):
-        running_loss_C = 0.0
-        C.train()
-        for i, (X1, Y1) in enumerate(DL_L, 1):
-            optimizer_C.zero_grad()
-            P1 = C(X1)
-            loss = C_Loss(P1, Y1)
-            loss.backward()
-            optimizer_C.step()
-            running_loss_C += loss.item()
-        loss_C = running_loss_C/len(DL_L) 
-        with torch.no_grad():
-            acc_C_G = np.mean([calc_accuracy(C(XV), YV) for (XV, YV) in DL_V])
-            C.eval()
-            acc_C_S = np.mean([calc_accuracy(C(XV), YV) for (XV, YV) in DL_V])
-        P.log(f"Epoch {epoch+1}: Loss = {loss_C:.4f} | Accuracy Gumbel = {acc_C_G:.4f} | Accuracy Softmax = {acc_C_S:.4f}")
-
    
 def sklearn_baseline(P):
     from sklearn.neural_network import MLPClassifier as MLP
@@ -472,6 +422,7 @@ def hyper_GAN_3_3(P_args):
         runs = 5,
         
         batch_size = 512,
+        FX_num = 454,
         
         FX_sel = 'all',
         Cross_val = 'user',
@@ -501,7 +452,6 @@ def hyper_GAN_3_3(P_args):
         ) 
     
     param_space={
-        'FX_num'          : scope.int(hp.quniform('FX_num', 200, 500, q=1)),
         'GD_ratio'        : hp.uniform('GD_ratio', 0, 0.9),
         
         'CLR'             : hp.loguniform('CLR', np.log(0.00001), np.log(0.1)),
@@ -575,6 +525,45 @@ def hyper_GAN_3_2(P_args):
 #  Hyperopt Baseline Search
 # -------------------   
 
+def hyper_R_1_2(P_args):
+    P_search = P_args.copy()
+    P_search.set_keys(
+        name = 'Hyper_R_1.2',
+        dataset = 'SHL',
+
+        epochs = 100,
+        runs = 5,
+        
+        batch_size = 512,
+        FX_num = 454,
+        
+        FX_sel = 'all',
+        Cross_val = 'user',
+        
+        User_L = 3,
+        User_U = 2,
+        User_V = 1,
+        
+        sample_no = None,
+        undersampling = True,
+        oversampling = False,
+        
+        R_aco_func = 'softmax',
+        R_tau = None,
+        ) 
+    
+    param_space={
+        'RLR'             : hp.loguniform('RLR', np.log(0.00001), np.log(0.1)),
+        'RB1'             : hp.loguniform('RB1', np.log(0.001), np.log(0.99)),
+        
+        'R_ac_func'       : hp.choice('R_ac_func',['relu','leaky','leaky20','sig']),
+        'R_hidden'        : scope.int(hp.qloguniform('R_hidden', np.log(16), np.log(4096), q=1)),
+        'R_hidden_no'     : scope.int(hp.quniform('R_hidden_no', 0, 9, q=1)), 
+        'R_optim'         : hp.choice('R_optim',['Adam','AdamW','SGD']),
+    } 
+    
+    hyperopt_R(P_search,param_space,eval_step=5,max_evals=None)
+
 def hyper_R_1_1(P_args):
     P_search = P_args.copy()
     P_search.set_keys(
@@ -602,7 +591,7 @@ def hyper_R_1_1(P_args):
         ) 
     
     param_space={
-        #'FX_num'          : scope.int(hp.quniform('FX_num', 1, 500, q=1)),
+        'FX_num'          : scope.int(hp.quniform('FX_num', 1, 500, q=1)),
 
         'RLR'             : hp.loguniform('RLR', np.log(0.00001), np.log(0.1)),
         'RB1'             : hp.loguniform('RB1', np.log(0.001), np.log(0.99)),
@@ -629,11 +618,10 @@ def hyper_GD_1_2(P_args):
         runs = 5,
         
         batch_size = 512,
+        FX_num = 454,
         
         FX_sel = 'all',
         Cross_val = 'user',
-        
-        FX_num = 200,
         
         User_L = 3,
         User_U = 2,
@@ -733,6 +721,9 @@ def main():
     parser.add_argument('-mrmr', dest='MRMR', action='store_true')
     parser.set_defaults(MRMR=False)
     
+    parser.add_argument('-sklearn', dest='SKLEARN', action='store_true')
+    parser.set_defaults(SKLEARN=False)
+    
     parser.add_argument('-cuda', dest='CUDA', action='store_true')
     parser.add_argument('-cpu', dest='CUDA', action='store_false')
     parser.set_defaults(CUDA=default['CUDA'])
@@ -762,8 +753,6 @@ def main():
     P_test.set_keys(
         name = 'Test',
         dataset = 'Test',
-        data_path = args.data_path,
-        CUDA = args.CUDA,
 
         epochs = 5,
         epochs_GD = 5,
@@ -799,10 +788,6 @@ def main():
     P.set_keys(
         name = 'evaluation',
         dataset = 'SHL',
-        data_path = args.data_path,
-        CUDA = args.CUDA,
-        
-        #PCA_n_components = 0.85,
 
         epochs = 1500,
         save_step = 2,
@@ -822,7 +807,7 @@ def main():
         
                 
         batch_size = 512,
-        FX_num = 200, 
+        FX_num = 454, 
         
         CB1 = 0.07247356069962284, 
         CLR = 1.631929289680412e-05, 
@@ -873,6 +858,7 @@ def main():
             sample_no = None,
             undersampling = False,
             oversampling = False,
+            
             )
         
         for cross_val in ['user']:
@@ -893,21 +879,20 @@ def main():
         #                 )
         #            evaluate(P,P_val)
 
-    if args.SEARCH:
-        hyper_GAN_3_2(P_args)
-    
-    if args.SEARCH_C:
-        hyper_R_1_1(P_args)
-    
-    if args.SEARCH_GD:
-        hyper_GD_1_1(P_args)
-    
     if args.MRMR:
         mrmr()
+        
+    if args.SKLEARN:
+        sklearn_baseline(P)
 
-    #sklearn_baseline(P)
-    #pytorch_baseline(P)
+    if args.SEARCH:
+        hyper_GAN_3_3(P_args)
     
-
+    if args.SEARCH_C:
+        hyper_R_1_2(P_args)
+    
+    if args.SEARCH_GD:
+        hyper_GD_1_2(P_args)
+    
 if __name__ == "__main__":
     main()
