@@ -19,6 +19,7 @@ if __package__ is None or __package__ == '':
     import data_source as ds
     import GAN
     from metrics import calc_accuracy, calc_f1score
+    from network import clear_cache
     from params import Params, save_fig, save_trials, load_trials
     from plot_confusion_matrix import plot_confusion_matrix
     import preprocessing as pp
@@ -26,6 +27,7 @@ else:
     from . import data_source as ds
     from . import GAN
     from .metrics import calc_accuracy, calc_f1score
+    from .network import clear_cache
     from .params import Params, save_fig, save_trials, load_trials
     from .plot_confusion_matrix import plot_confusion_matrix
     from . import preprocessing as pp
@@ -98,7 +100,7 @@ def hyperopt_Search(P,param_space,objective_func,eval_step=5,max_evals=None):
 def is_individual_dataload(param_space):
     return any(key in param_space for key in ['FX_num','batch_size'])
     
-def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None):
+def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None,num_G_samples=500):
     P.set('save_step',INF)
     P.set('R_active',False)
     
@@ -106,6 +108,9 @@ def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None):
         P.set('FX_num',None)
     F = ds.get_data(P)
     P.log("Data loaded.")
+    
+    if P.get('CUDA') and torch.cuda.is_available(): floatTensor = torch.cuda.FloatTensor
+    else: floatTensor = torch.FloatTensor
     
     indivual_load = is_individual_dataload(param_space)
     if not indivual_load:
@@ -123,21 +128,30 @@ def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None):
         else:
             DL_L, DL_U_iter, DL_V = DL
             
-        perf_mat = np.empty(shape=(2,P.get('runs'),len(DL_V)))
+        perf_mat_C = np.empty(shape=(2,P.get('runs'),len(DL_V)))
+        perf_mat_D = np.empty(shape=(2,P.get('runs')))
         for run in range(P0.get('runs')):
-            _, _, C, _, _ = GAN.train_GAN(P0, DL_L, DL_U_iter, DL_V, name=P0.get('name')+'_%d'%run)
-            C.eval()
+            G, D, C, _, _ = GAN.train_GAN(P0, DL_L, DL_U_iter, DL_V, name=P0.get('name')+'_%d'%run)
+            G.eval();D.eval();C.eval();
+            
             with torch.no_grad():
+                acc_D = np.empty(shape=len(DL_V))
                 for i,(XV, YV) in enumerate(DL_V):
-                    perf_mat[0,run,i] = calc_f1score(C(XV), YV)
-                    perf_mat[1,run,i] = calc_accuracy(C(XV), YV)
+                    perf_mat_C[0,run,i] = calc_f1score(C(XV), YV)
+                    perf_mat_C[1,run,i] = calc_accuracy(C(XV), YV)
+                    acc_D[i] = calc_accuracy(D(torch.cat((XV,YV),dim=1)),floatTensor(XV.shape[0],1).fill_(1.0))
+                    
+                YV = floatTensor(pp.get_one_hot_labels(P0,num=num_G_samples)) 
+                perf_mat_D[0,run] = calc_accuracy(D(torch.cat((G(torch.cat((floatTensor(np.random.normal(0,1,(num_G_samples,P.get('noise_shape')))),YV),dim=1)),YV),dim=1)),floatTensor(num_G_samples,1).fill_(0.0))
+                perf_mat_D[1,run] = np.mean(acc_D)
               
-        perf = np.mean(perf_mat.reshape(2,-1),axis=1)
-        P0.log(f"F1: {perf[0]:.5f} | Accuracy: {perf[1]:.5f}",name='hyperopt')
-        return -perf[0]
+        perf = np.mean(perf_mat_C.reshape(2,-1),axis=1)
+        val = 0.5 * np.mean((0.5-perf_mat_D[0])**2) + 0.1 * np.mean((1-perf_mat_D[1])**2) - perf[0]
+        P0.log(f"loss = {val:.5f} [Accuracy D = {np.mean(perf_mat_D):.5f} | vs G = {np.mean(perf_mat_D[0]):.5f} | vs real = {np.mean(perf_mat_D[1]):.5f}] [C - F1: {perf[0]:.5f} | Accuracy: {perf[1]:.5f}]",name='hyperopt')
+        return val
  
     hyperopt_Search(P,param_space,obj,eval_step=eval_step,max_evals=max_evals)
-
+        
 
 def hyperopt_R(P,param_space,eval_step=5,max_evals=None): 
     P.set('save_step',INF)
@@ -446,18 +460,10 @@ def hyper_GAN_3_3(P_args):
         undersampling = True,
         oversampling = False,
         
-        DB1 = 0.369708304707758, 
-        DLR = 1.9199594022664388e-05, 
-        D_ac_func = 'relu', 
-        D_hidden = 89, 
-        D_hidden_no = 2, 
-        D_optim = 'SGD', 
+        C_aco_func = 'gumbel',
         
-        GB1 = 0.0017051156195954642, 
-        GLR = 1.004720922271863e-05, 
-        G_ac_func = 'leaky20', 
-        G_hidden = 3176, 
-        G_hidden_no = 1, 
+        D_optim = 'SGD', 
+
         G_optim = 'SGD',
         
         ) 
@@ -470,9 +476,22 @@ def hyper_GAN_3_3(P_args):
         
         'C_ac_func'       : hp.choice('C_ac_func',['relu','leaky','leaky20','sig']),
         'C_hidden'        : scope.int(hp.qloguniform('C_hidden', np.log(16), np.log(4096), q=1)),
-        'C_hidden_no'     : scope.int(hp.quniform('C_hidden_no', 0, 9, q=1)), 
+        'C_hidden_no'     : scope.int(hp.quniform('C_hidden_no', 1, 8, q=1)), 
         'C_optim'         : hp.choice('C_optim',['AdamW','SGD']),
         'C_tau'           : hp.loguniform('C_tau', np.log(0.01), np.log(10.)),
+        
+        'GLR'             : hp.loguniform('GLR', np.log(0.00001), np.log(0.1)),
+        'GB1'             : hp.loguniform('GB1', np.log(0.001), np.log(0.99)),
+        'DLR'             : hp.loguniform('DLR', np.log(0.00001), np.log(0.1)),
+        'DB1'             : hp.loguniform('DB1', np.log(0.001), np.log(0.99)),
+
+        'G_ac_func'       : hp.choice('G_ac_func',['relu','leaky','leaky20','sig']),
+        'G_hidden'        : scope.int(hp.qloguniform('G_hidden', np.log(16), np.log(4096), q=1)),
+        'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 1, 8, q=1)), 
+        
+        'D_ac_func'       : hp.choice('D_ac_func',['relu','leaky','leaky20','sig']),
+        'D_hidden'        : scope.int(hp.qloguniform('D_hidden', np.log(16), np.log(4096), q=1)),
+        'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 1, 8, q=1)), 
     }   
     
     hyperopt_GAN(P_search,param_space,eval_step=5,max_evals=None)
@@ -714,6 +733,9 @@ def main():
     
     parser = argparse.ArgumentParser()
     
+    parser.add_argument('-clear', dest='CLEAR', action='store_true')
+    parser.set_defaults(CLEAR=False)
+    
     parser.add_argument('-test', dest='TEST', action='store_true')
     parser.set_defaults(TEST=False)
     
@@ -854,6 +876,9 @@ def main():
         R_tau = 0.606889373892653,
         ) 
     
+
+    if args.CLEAR:
+        clear_cache()
 
     if args.TEST:
         P_test.set_keys(CUDA = True,)
