@@ -115,6 +115,7 @@ def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None,num_G_samples=500):
     indivual_load = is_individual_dataload(param_space)
     if not indivual_load:
         DL = pp.get_all_dataloader(P,F)
+        P.log(f"Number of batches: Labelled = {len(DL[0])} | Unlabelled = {len(DL[1])} | Validation = {len(DL[2])}")
     
     def obj(args):
         P0 = P.copy()
@@ -164,6 +165,7 @@ def hyperopt_R(P,param_space,eval_step=5,max_evals=None):
     indivual_load = is_individual_dataload(param_space)
     if not indivual_load:
         DL = pp.get_all_dataloader(P,F)
+        P.log(f"Number of batches: Labelled = {len(DL[0])} | Unlabelled = {len(DL[1])} | Validation = {len(DL[2])}")
     
     def obj(args):
         P0 = P.copy()
@@ -208,6 +210,7 @@ def hyperopt_GD(P,param_space,eval_step=5,max_evals=None,num_G_samples=500):
     indivual_load = is_individual_dataload(param_space)
     if not indivual_load:
         DL = pp.get_all_dataloader(P,F)
+        P.log(f"Number of batches: Labelled = {len(DL[0])} | Unlabelled = {len(DL[1])} | Validation = {len(DL[2])}")
     
     def obj(args):
         P0 = P.copy()
@@ -381,15 +384,12 @@ def evaluate(P,P_val=None):
         plot_confusion_matrix(con_mat,P,name=name+'_normalised',title='Confusion matrix',fmt='0.3f')
 
    
-def mrmr(K=None,log=True):
+def mrmr(K=908,log=True):
     import pandas as pd
     from sklearn.feature_selection import f_regression
     
     from sliding_window import get_FX_names
-    
-    if K is None:
-        K = 908
-    
+   
     P = Params(dataset='SHL',FX_sel='all',cross_val='user')
     F = ds.load_data(P)
     
@@ -437,6 +437,11 @@ def mrmr(K=None,log=True):
 #  Hyperopt GAN Search
 # -------------------
 
+def hyper_GAN_3_3a(P_args):
+    P_search = P_args.copy()
+    P_search.set('Cross_val','combined')
+    hyper_GAN_3_3(P_search)
+
 def hyper_GAN_3_3(P_args):
     P_search = P_args.copy()
     P_search.set_keys(
@@ -450,7 +455,6 @@ def hyper_GAN_3_3(P_args):
         FX_num = 454,
         
         FX_sel = 'all',
-        Cross_val = 'user',
         
         User_L = 3,
         User_U = 2,
@@ -828,9 +832,9 @@ def main():
         
         FX_sel = 'all',
         
-        Cross_val = 'user',
+        Cross_val = 'combined',
         
-        sample_no = None,
+        sample_no = 800,
         undersampling = False,
         oversampling = False,
         
@@ -838,32 +842,29 @@ def main():
         User_U = 2,
         User_V = 3,
         
-                
         batch_size = 512,
         FX_num = 454, 
         
-        CB1 = 0.07247356069962284, 
-        CLR = 1.631929289680412e-05, 
-        C_ac_func = 'leaky20', 
-        C_hidden = 697, 
-        C_hidden_no = 6, 
+        CB1 = 0.001508163984430861, 
+        CLR = 0.0039035726898435474, 
+        C_ac_func = 'sig', 
+        C_hidden = 59, 
+        C_hidden_no = 2, 
         C_optim = 'AdamW', 
-        C_tau = 3.962724498941699, 
+        C_tau = 1.7941581965351747, 
         
-        DB1 = 0.369708304707758, 
-        DLR = 1.9199594022664388e-05, 
-        D_ac_func = 'relu', 
-        D_hidden = 89, 
-        D_hidden_no = 2, 
-        D_optim = 'SGD', 
+        DB1 = 0.43490552730544446, 
+        DLR = 2.648853861448327e-05, 
+        D_ac_func = 'leaky', 
+        D_hidden = 566, 
+        D_hidden_no = 6, 
+        GB1 = 0.037877789517951274, 
         
-        
-        GB1 = 0.0017051156195954642, 
-        GLR = 1.004720922271863e-05, 
-        G_ac_func = 'leaky20', 
-        G_hidden = 3176, 
-        G_hidden_no = 1, 
-        G_optim = 'SGD',
+        GD_ratio = 0.10961612373959789, 
+        GLR = 6.299545862277024e-05, 
+        G_ac_func = 'leaky', 
+        G_hidden = 3340, 
+        G_hidden_no = 1,
 
         
         RB1 = 0.13905385615810364, 
@@ -897,14 +898,8 @@ def main():
             
             )
         
-        for cross_val in ['user']:
-            for basic_train in [True]:
-                   P.set_keys(
-                        name = '_'.join(['eval','C',('Complete' if basic_train else 'GAN'),cross_val,'cross']),
-                        C_basic_train = basic_train,
-                        Cross_val = cross_val,
-                        )
-                   evaluate(P,P_val)
+
+        evaluate(P,P_val)
         
         # for cross_val in ['user','none']:
         #     for basic_train in [True,False]:
@@ -922,7 +917,7 @@ def main():
         sklearn_baseline(P)
 
     if args.SEARCH:
-        hyper_GAN_3_3(P_args)
+        hyper_GAN_3_3a(P_args)
     
     if args.SEARCH_C:
         hyper_R_1_2(P_args)

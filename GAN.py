@@ -13,9 +13,8 @@ else:
     from . import preprocessing as pp
    
 def train_Base(P, DL_L, DL_U_iter, DL_V, name=None):   
-    if name is None:
-        name = P.get('name')
-    
+    name = name if name is not None else P.get('name')
+
     R_Loss = network.CrossEntropyLoss_OneHot()
         
     if P.get('CUDA') and torch.cuda.is_available():
@@ -48,8 +47,7 @@ def train_Base(P, DL_L, DL_U_iter, DL_V, name=None):
     return R, mat_accuracy, mat_f1_score
  
 def train_GD(P, DL_L, DL_V, mat_accuracy=None, mat_f1_score=None, name=None):
-    if name is None:
-        name = P.get('name')
+    name = name if name is not None else P.get('name')
         
     D_Loss = torch.nn.BCELoss()
 
@@ -69,7 +67,8 @@ def train_GD(P, DL_L, DL_V, mat_accuracy=None, mat_f1_score=None, name=None):
 
     optimizer_G = network.get_optimiser(P,'G',G.parameters())
     optimizer_D = network.get_optimiser(P,'D',D.parameters())
-
+    
+    epochs_total = (P.get('epochs_GD')+P.get('epochs'))
     for epoch in range(P.get('epochs_GD')):
         
         if P.get('print_epoch'):
@@ -138,7 +137,7 @@ def train_GD(P, DL_L, DL_V, mat_accuracy=None, mat_f1_score=None, name=None):
         # -------------------
         
         if P.get('print_epoch'):
-            logString = f"[Epoch {epoch+1}/{P.get('epochs')}] [G loss: {np.mean([loss.item() for loss in loss_G])}] [D loss: {np.mean([loss.item() for loss in loss_D])}]"
+            logString = f"[Epoch {epoch+1}/{epochs_total}] [G loss: {np.mean([loss.item() for loss in loss_G])}] [D loss: {np.mean([loss.item() for loss in loss_D])}]"
             P.log(logString,save=False)
         
         if (epoch+1)%P.get('save_step') == 0:
@@ -188,20 +187,19 @@ def train_GD(P, DL_L, DL_V, mat_accuracy=None, mat_f1_score=None, name=None):
             mat_f1_score[0,idx] = np.mean(G_f1)
             mat_f1_score[1,idx] = np.mean(D_f1)
             
-            logString = f"[{name}] [Epoch {epoch+1}/{P.get('epochs')}] [G F1: {mat_f1_score[0,idx]} acc: {acc_G}] [D F1: {mat_f1_score[1,idx]} acc: {acc_D} | vs Real: {D_acc[0]} | vs G: {D_acc[1]}]"
+            logString = f"[{name}] [Epoch {epoch+1}/{epochs_total}] [G F1: {mat_f1_score[0,idx]} acc: {acc_G}] [D F1: {mat_f1_score[1,idx]} acc: {acc_D} | vs Real: {D_acc[0]} | vs G: {D_acc[1]}]"
             P.log(logString,save=True) 
             
     return G, D, mat_accuracy, mat_f1_score
         
 def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
+    name = name if name is not None else P.get('name')
     
     # -------------------
     #  Parameters
     # -------------------
     
     #P.log(str(P))
-    if name is None:
-        name = P.get('name')
     plt.close('all')
     
     # -------------------
@@ -246,8 +244,9 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
     # -------------------
     #  Training
     # -------------------
-
-    for epoch in range(P.get('epochs_GD'),(P.get('epochs_GD')+P.get('epochs'))):
+    
+    epochs_total = (P.get('epochs_GD')+P.get('epochs'))
+    for epoch in range(P.get('epochs_GD'),epochs_total):
         
         if P.get('print_epoch'):
             running_loss_G = 0.0
@@ -397,7 +396,7 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
         # -------------------
         
         if P.get('print_epoch'):
-            logString = "[Epoch %d/%d] [G loss: %f] [D loss: %f] [C loss: %f]"%(epoch+1, (P.get('epochs_GD')+P.get('epochs')), running_loss_G/(i), running_loss_D/(i), running_loss_C/(i))
+            logString = "[Epoch %d/%d] [G loss: %f] [D loss: %f] [C loss: %f]"%(epoch+1, epochs_total, running_loss_G/(i), running_loss_D/(i), running_loss_C/(i))
             P.log(logString,save=False)
         
         if (epoch+1)%P.get('save_step') == 0:
@@ -468,7 +467,7 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             mat_f1_score[1,idx] = np.mean(D_f1)
             mat_f1_score[2,idx] = np.mean(C_f1)
             
-            logString = f"[{name}] [Epoch {epoch+1}/{(P.get('epochs_GD')+P.get('epochs'))}] [G F1: {mat_f1_score[0,idx]} acc: {acc_G}] [D F1: {mat_f1_score[1,idx]} acc: {acc_D} | vs Real: {D_acc[0]} | vs G: {D_acc[2]} | vs C: {D_acc[1]}] [C F1: {mat_f1_score[2,idx]} acc: {acc_C} | vs Real: {acc_C_real} | vs D: {acc_C_vs_D}]"
+            logString = f"[{name}] [Epoch {epoch+1}/{epochs_total}] [G F1: {mat_f1_score[0,idx]} acc: {acc_G}] [D F1: {mat_f1_score[1,idx]} acc: {acc_D} | vs Real: {D_acc[0]} | vs G: {D_acc[2]} | vs C: {D_acc[1]}] [C F1: {mat_f1_score[2,idx]} acc: {acc_C} | vs Real: {acc_C_real} | vs D: {acc_C_vs_D}]"
             P.log(logString,save=True) 
                    
     # -------------------

@@ -299,6 +299,13 @@ def get_data(P):
     if P.get('Cross_val') == 'user':
         return [F[P.get('User_L')-1], F[P.get('User_U')-1], F[P.get('User_V')-1]]
     
+    # User 1 as labelled, User 2+3 as unlabelled/validation data
+    if P.get('Cross_val') == 'combined':
+        XL, YL = F[0]
+        XU = np.concatenate([X for X,_ in F[1:]])
+        YU = np.concatenate([Y for _,Y in F[1:]])
+        return [[XL,YL], [XU,YU], [XU,YU]] 
+        
     if P.get('Cross_val') == 'none':
         X = np.concatenate([X for X,_ in F])
         Y = np.concatenate([Y for _,Y in F])
@@ -324,15 +331,19 @@ if __name__ == "__main__":
     FX_sel = 'auto_correlation'
     FX_sel = 'all'
     
+    Cross_val = 'user'
+    #Cross_val = 'combined'
+    #Cross_val = 'none'
+    
     labels = None
     #labels = [1,2,3]
     
     magnitude = True
     #magnitude = False
     
-    P = Params(dataset=dataset,labels=labels,FX_sel=FX_sel,magnitude=magnitude)
+    P = Params(dataset=dataset,labels=labels,FX_sel=FX_sel,magnitude=magnitude,Cross_val=Cross_val)
     
-    F = load_data(P)
+    F = get_data(P)
     
     for i,(X,Y) in enumerate(F):
         print("#--------------#")
