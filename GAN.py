@@ -12,7 +12,7 @@ else:
     from . import network
     from . import preprocessing as pp
    
-def train_Base(P, DL_L, DL_U_iter, DL_V, name=None):   
+def train_Base(P, DL_L, DL_V, name=None):   
     name = name if name is not None else P.get('name')
 
     R_Loss = network.CrossEntropyLoss_OneHot()

@@ -4,9 +4,9 @@ import time
 def clear(name='log'):
     open(name+'.txt', 'w').close()
 
-def log(txt,save=True,error=False,name='log'):
+def log(txt:str,save:bool=True,error:bool=False,name:str='log'):
     dateTimeStamp = time.strftime('%Y-%m-%d_%H:%M:%S | ')
-    string = dateTimeStamp +  (" --ERROR-- " if error else "") + txt
+    string = dateTimeStamp +  (" --ERROR-- " if error else "") + str(txt)
     print(string)
     if(save):
         f=open(name+'.txt','a+')

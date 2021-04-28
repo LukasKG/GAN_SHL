@@ -252,7 +252,7 @@ class Params:
     def get_dataset_hash_str(self):
         return str(self.get_dataset_hash())
 
-    def log(self,txt,save=True,error=False,name=None):
+    def log(self,txt:str,save:bool=True,error:bool=False,name:str=None):
         if name is None:
             name = self.get('log_name')
         writeLog(txt,save=save,error=error,name=name)

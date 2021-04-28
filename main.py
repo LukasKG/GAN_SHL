@@ -32,35 +32,198 @@ else:
     from .plot_confusion_matrix import plot_confusion_matrix
     from . import preprocessing as pp
    
+# -------------------
+#  Baseline
+# -------------------
+   
 def sklearn_baseline(P):
     from sklearn.neural_network import MLPClassifier as MLP
     from sklearn.ensemble import RandomForestClassifier
-
+    from sklearn.metrics import accuracy_score, f1_score
+    P.log(P)
+        
     F = pp.perform_preprocessing(P, ds.get_data(P))
     
     x_train, y_train = F[0]
     x_test, y_test = F[2]
+    y_train, y_test = y_train.ravel(), y_test.ravel()
     
+    P.log('Cross_val: '+str(P.get('Cross_val')))
+    P.log('   FX_num: '+str(P.get('FX_num')))
+    
+    ''' Multi-layer Perceptron '''
     mlp = MLP(hidden_layer_sizes=(100,100),max_iter=500)
-    
-    mlp.fit(x_train, y_train.ravel())
-    
-    score = mlp.score(x_train, y_train.ravel())
-    P.log(f"MLP Acc Train: {score:.2f}")
-    
-    score = mlp.score(x_test, y_test.ravel())
-    P.log(f"MLP Acc Test: {score:.2f}")
-    
-    rfc = RandomForestClassifier()
-    
-    rfc.fit(x_train, y_train.ravel())
-    
-    score = rfc.score(x_train, y_train.ravel())
-    P.log(f"RFC Acc Train: {score:.2f}")
-    
-    score = rfc.score(x_test, y_test.ravel())
-    P.log(f"RFC Acc Test: {score:.2f}")
+    mlp.fit(x_train, y_train)
 
+    y_pred = mlp.predict(x_train) 
+    P.log(f"MLP Acc Train: {accuracy_score(y_train,y_pred):.2f}")
+    P.log(f"MLP  F1 Train: {f1_score(y_train,y_pred,average='weighted'):.2f}")
+    
+    y_pred = mlp.predict(x_test)
+    P.log(f"MLP Acc  Test: {accuracy_score(y_test,y_pred):.2f}")
+    P.log(f"MLP  F1  Test: {f1_score(y_test,y_pred,average='weighted'):.2f}")
+    P.log(F"MLP Iterations = {mlp.n_iter_}")
+    
+    ''' Random Forest Classifier '''
+    rfc = RandomForestClassifier()
+    rfc.fit(x_train, y_train)
+    
+    y_pred = rfc.predict(x_train)
+    P.log(f"RFC Acc Train: {accuracy_score(y_train,y_pred):.2f}")
+    P.log(f"RFC  F1 Train: {f1_score(y_train,y_pred,average='weighted'):.2f}")
+    
+    y_pred = rfc.predict(x_test)
+    P.log(f"RFC Acc  Test: {accuracy_score(y_test,y_pred):.2f}")
+    P.log(f"RFC  F1  Test: {f1_score(y_test,y_pred,average='weighted'):.2f}")
+
+
+def plt_FX_num(P,max_n=908):
+    from sklearn.neural_network import MLPClassifier as MLP
+    from sklearn.metrics import accuracy_score, f1_score
+    
+    P.set('FX_indeces',None)
+    P.set('log_name','fx_num')
+    F = pp.perform_preprocessing(P, ds.get_data(P))
+    
+    mat = np.empty(shape=(3,max_n))
+    FX = np.arange(1,max_n+1,1)
+    for fx in FX:
+        P.set('FX_num',fx)
+        F0 = ds.select_features(F,P.get('FX_indeces'))
+        
+        x_train, y_train = F0[0]
+        x_test, y_test = F0[2]
+
+        res = np.empty(shape=(3,P.get('runs')))
+        for run in range(P.get('runs')):
+
+            mlp = MLP(hidden_layer_sizes=(100,100),max_iter=2000)
+            mlp.fit(x_train, y_train.ravel())
+            res[0,run] = accuracy_score(y_test.ravel(),mlp.predict(x_test))
+            res[1,run] = f1_score(y_test.ravel(),mlp.predict(x_test),average='weighted')
+            res[2,run] = mlp.n_iter_
+    
+        mat[:,fx-1] = np.mean(res,axis=1)
+        P.log(f"Fx_num = {fx}: [Acc = {mat[0,fx-1]:.2f}] [F1 = {mat[1,fx-1]:.2f}] [{mat[2,fx-1]:.2f} iterations]")
+        
+    plt.figure(figsize=(27,9),dpi=300,clear=True)
+    fig, ax = plt.subplots()
+    
+    ax.plot(FX,mat[0],linestyle='solid',label='Accuracy')
+    ax.plot(FX,mat[1],linestyle='solid',label='F1 Score')
+    
+    ax.legend()
+    ax.set_xlabel('FX_num')
+    ax.set_ylabel('Performance')
+    
+    ax.set_xlim(1,max_n)
+    ax.grid()
+    save_fig(P,'eval_fx_num',fig)
+    
+    ax.plot(FX,mat[2]/np.max(mat[2]),linestyle='solid',label='Iterations')
+    ax.legend()
+    save_fig(P,'eval_fx_num_iterations',fig)
+
+def pytorch_baseline(P,P_val=None,num=None):
+    P.set('epochs_GD',0)
+    P.log("Params: "+str(P))
+    
+    if P.get('CUDA') and torch.cuda.is_available():
+        P.log("CUDA Training.")
+    else:
+        P.log("CPU Training.")
+    
+    DL_L, _, DL_V = pp.get_all_dataloader(P, ds.get_data(P))
+    P.log(f"Number of batches: Labelled = {len(DL_L)} | Validation = {len(DL_V)}")
+    
+    if P_val is not None:
+        P.log("Load Validation data.")
+        _, _, DL_V = pp.get_all_dataloader(P_val, ds.get_data(P_val))
+
+        
+    ACC = None
+    F1S = None
+    RF = None
+    YF = None
+    
+    # -------------------
+    #  Individual runs
+    # -------------------
+    
+    for run in range(P.get('runs')):
+    
+        R, mat_accuracy, mat_f1_score = GAN.train_Base(P, DL_L, DL_V, name=P.get('name')+'_%d'%run)
+
+        if ACC is None:
+            ACC = mat_accuracy
+            F1S = mat_f1_score
+        else:
+            ACC = np.concatenate((ACC, mat_accuracy),axis=0)
+            F1S = np.concatenate((F1S, mat_f1_score),axis=0)
+
+        R.eval()
+        with torch.no_grad():
+            for XV, YV in DL_V:
+                
+                if RF == None:
+                    RF = R(XV)
+                    YF = YV
+                else:
+                    RF = torch.cat((RF, R(XV).detach()), 0)
+                    YF = torch.cat((YF, YV), 0)
+
+    # -------------------
+    #  Plot Metrics
+    # -------------------
+    
+    timeline = np.arange(0,(P.get('epochs_GD')+P.get('epochs'))+1,P.get('save_step'))
+    
+    def get_label(name,model):
+        if name == "Accuracy": return "Accuracy $A_%s$"%model;
+        elif name == "F1 Score": return "F1 Score $F_%s$"%model;
+        else: return "NO_NAME_"+model
+       
+        
+    plt.figure(figsize=(27,9),dpi=300,clear=True)
+    fig, ax = plt.subplots()  
+    
+    cmap = plt.get_cmap('gnuplot')
+    indices = np.linspace(0, cmap.N, 7)
+    colors = [cmap(int(i)) for i in indices]
+        
+    for k,(name,mat) in enumerate((('Accuracy',ACC),("F1 Score",F1S))):
+
+        mean_C = np.mean(mat,axis=0)
+        std_C = np.std(mat,axis=0)
+
+        P.log(f"R {name} Test: {mean_C[-1]:.2f}")
+
+        ax.plot(timeline,mean_C,c=colors[k],linestyle='solid',label=get_label(name,'R'))
+        ax.fill_between(timeline, mean_C-std_C, mean_C+std_C, alpha=0.3, facecolor=colors[k])
+            
+    Y_max = 1.15
+    ax.set_xlim(0.0,(P.get('epochs_GD')+P.get('epochs')))
+    ax.set_ylim(0.0,Y_max)
+
+    ax.legend()
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('Performance')
+      
+    if num is None: name = 'eval_baseline'
+    else: name = 'eval_baseline_'+str(num)
+    
+    ax.grid()
+    save_fig(P,name,fig)
+  
+    YF = pp.one_hot_to_labels(P,YF)
+    RF = pp.one_hot_to_labels(P,RF)
+
+    con_mat = confusion_matrix(YF, RF, labels=None, sample_weight=None, normalize=None)
+    plot_confusion_matrix(np.divide(con_mat,P.get('runs')).round().astype(int),P,name=name,title='Confusion matrix',fmt='d')
+    
+    con_mat = confusion_matrix(YF, RF, labels=None, sample_weight=None, normalize='all')
+    plot_confusion_matrix(con_mat,P,name=name+'_normalised',title='Confusion matrix',fmt='0.3f')
+    
 
 def hyperopt_Search(P,param_space,objective_func,eval_step=5,max_evals=None):
     P.log("Params: "+str(P),name='hyperopt')
@@ -182,7 +345,7 @@ def hyperopt_R(P,param_space,eval_step=5,max_evals=None):
         perf_mat = np.empty(shape=(2,P.get('runs'),len(DL_V)))
         for run in range(P0.get('runs')):
 
-            C, _, _ = GAN.train_Base(P0, DL_L, DL_U_iter, DL_V, name=P0.get('name')+'_%d'%run)
+            C, _, _ = GAN.train_Base(P0, DL_L, DL_V, name=P0.get('name')+'_%d'%run)
             C.eval()
             with torch.no_grad():
                 for i,(XV, YV) in enumerate(DL_V):
@@ -272,7 +435,7 @@ def get_Results(P,P_val=None):
         G, D, C, mat_accuracy, mat_f1_score = GAN.train_GAN(P, DL_L, DL_U_iter, DL_V, name=P.get('name')+'_%d'%run)
         
         if P.get('R_active'):
-            R, acc_BASE, f1_BASE = GAN.train_Base(P, DL_L, DL_U_iter, DL_V, name=P.get('name')+'_%d'%run)
+            R, acc_BASE, f1_BASE = GAN.train_Base(P, DL_L, DL_V, name=P.get('name')+'_%d'%run)
             mat_accuracy = np.concatenate((mat_accuracy,acc_BASE))
             mat_f1_score = np.concatenate((mat_f1_score,f1_BASE))
         if ACC is None:
@@ -312,7 +475,7 @@ def evaluate(P,P_val=None):
     ACC, F1S, (YF, RF, PF) = get_Results(P,P_val)
 
     # -------------------
-    #  Plot Accuracy
+    #  Plot Metrics
     # -------------------
     
     timeline = np.arange(0,(P.get('epochs_GD')+P.get('epochs'))+1,P.get('save_step'))
@@ -390,7 +553,7 @@ def mrmr(K=908,log=True):
     
     from sliding_window import get_FX_names
    
-    P = Params(dataset='SHL',FX_sel='all',cross_val='user')
+    P = Params(dataset='SHL',FX_sel='all',cross_val='user',log_name='mrmr')
     F = ds.load_data(P)
     
     X = np.concatenate([X0 for X0,_ in F])
@@ -437,10 +600,59 @@ def mrmr(K=908,log=True):
 #  Hyperopt GAN Search
 # -------------------
 
-def hyper_GAN_3_3a(P_args):
+def hyper_GAN_3_4(P_args):
     P_search = P_args.copy()
-    P_search.set('Cross_val','combined')
-    hyper_GAN_3_3(P_search)
+    P_search.set_keys(
+        name = 'Hyper_GAN_3.3',
+        dataset = 'SHL',
+
+        epochs = 200,
+        runs = 5,
+        
+        batch_size = 512,
+        FX_num = 50,
+        
+        FX_sel = 'combined',
+        
+        sample_no = 400,
+        undersampling = False,
+        oversampling = False,
+        
+        C_aco_func = 'gumbel',
+        
+        D_optim = 'SGD', 
+
+        G_optim = 'SGD',
+        
+        ) 
+    
+    param_space={
+        'GD_ratio'        : hp.uniform('GD_ratio', 0, 0.9),
+        
+        'CLR'             : hp.loguniform('CLR', np.log(0.00001), np.log(0.1)),
+        'CB1'             : hp.loguniform('CB1', np.log(0.001), np.log(0.99)),
+        
+        'C_ac_func'       : hp.choice('C_ac_func',['relu','leaky','leaky20','sig']),
+        'C_hidden'        : scope.int(hp.qloguniform('C_hidden', np.log(16), np.log(4096), q=1)),
+        'C_hidden_no'     : scope.int(hp.quniform('C_hidden_no', 1, 8, q=1)), 
+        'C_optim'         : hp.choice('C_optim',['AdamW','SGD']),
+        'C_tau'           : hp.loguniform('C_tau', np.log(0.01), np.log(10.)),
+        
+        'GLR'             : hp.loguniform('GLR', np.log(0.00001), np.log(0.1)),
+        'GB1'             : hp.loguniform('GB1', np.log(0.001), np.log(0.99)),
+        'DLR'             : hp.loguniform('DLR', np.log(0.00001), np.log(0.1)),
+        'DB1'             : hp.loguniform('DB1', np.log(0.001), np.log(0.99)),
+
+        'G_ac_func'       : hp.choice('G_ac_func',['relu','leaky','leaky20','sig']),
+        'G_hidden'        : scope.int(hp.qloguniform('G_hidden', np.log(16), np.log(4096), q=1)),
+        'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 1, 8, q=1)), 
+        
+        'D_ac_func'       : hp.choice('D_ac_func',['relu','leaky','leaky20','sig']),
+        'D_hidden'        : scope.int(hp.qloguniform('D_hidden', np.log(16), np.log(4096), q=1)),
+        'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 1, 8, q=1)), 
+    }   
+    
+    hyperopt_GAN(P_search,param_space,eval_step=5,max_evals=None)
 
 def hyper_GAN_3_3(P_args):
     P_search = P_args.copy()
@@ -569,17 +781,12 @@ def hyper_R_1_2(P_args):
         runs = 5,
         
         batch_size = 512,
-        FX_num = 454,
         
         FX_sel = 'all',
-        Cross_val = 'user',
+        Cross_val = 'combined',
         
-        User_L = 3,
-        User_U = 2,
-        User_V = 1,
-        
-        sample_no = None,
-        undersampling = True,
+        sample_no = 400,
+        undersampling = False,
         oversampling = False,
         
         R_aco_func = 'softmax',
@@ -589,10 +796,11 @@ def hyper_R_1_2(P_args):
     param_space={
         'RLR'             : hp.loguniform('RLR', np.log(0.00001), np.log(0.1)),
         'RB1'             : hp.loguniform('RB1', np.log(0.001), np.log(0.99)),
+        'FX_num'          : scope.int(hp.quniform('FX_num', 1, 454, q=1)),
         
         'R_ac_func'       : hp.choice('R_ac_func',['relu','leaky','leaky20','sig']),
         'R_hidden'        : scope.int(hp.qloguniform('R_hidden', np.log(16), np.log(4096), q=1)),
-        'R_hidden_no'     : scope.int(hp.quniform('R_hidden_no', 0, 9, q=1)), 
+        'R_hidden_no'     : scope.int(hp.quniform('R_hidden_no', 1, 8, q=1)), 
         'R_optim'         : hp.choice('R_optim',['Adam','AdamW','SGD']),
     } 
     
@@ -761,6 +969,12 @@ def main():
     parser.add_argument('-sklearn', dest='SKLEARN', action='store_true')
     parser.set_defaults(SKLEARN=False)
     
+    parser.add_argument('-base', dest='BASE', action='store_true')
+    parser.set_defaults(BASE=False)
+    
+    parser.add_argument('-fx_num', dest='FX_NUM', action='store_true')
+    parser.set_defaults(FX_NUM=False)
+    
     parser.add_argument('-cuda', dest='CUDA', action='store_true')
     parser.add_argument('-cpu', dest='CUDA', action='store_false')
     parser.set_defaults(CUDA=default['CUDA'])
@@ -827,14 +1041,14 @@ def main():
         dataset = 'SHL',
 
         epochs = 1500,
-        save_step = 2,
-        runs = 3,
+        save_step = 3,
+        runs = 5,
         
         FX_sel = 'all',
         
         Cross_val = 'combined',
         
-        sample_no = 800,
+        sample_no = None,
         undersampling = False,
         oversampling = False,
         
@@ -843,7 +1057,7 @@ def main():
         User_V = 3,
         
         batch_size = 512,
-        FX_num = 454, 
+        FX_num = 50, 
         
         CB1 = 0.001508163984430861, 
         CLR = 0.0039035726898435474, 
@@ -915,9 +1129,22 @@ def main():
         
     if args.SKLEARN:
         sklearn_baseline(P)
+        
+    if args.FX_NUM:
+        plt_FX_num(P,max_n=454)
+        
+    if args.BASE:
+        P_val = P.copy()
+        P_val.set_keys(
+            sample_no = None,
+            undersampling = False,
+            oversampling = False,
+            )
 
+        pytorch_baseline(P,P_val)
+        
     if args.SEARCH:
-        hyper_GAN_3_3a(P_args)
+        hyper_GAN_3_4(P_args)
     
     if args.SEARCH_C:
         hyper_R_1_2(P_args)
