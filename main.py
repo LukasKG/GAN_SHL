@@ -623,7 +623,7 @@ def hyper_GAN_3_4(P_args):
 #  Hyperopt Baseline Search
 # -------------------   
 
-def hyper_R_1_2(P_args):
+def hyper_R_1_3(P_args):
     P_search = P_args.copy()
     P_search.set_keys(
         name = 'Hyper_R_1.2',
@@ -669,8 +669,7 @@ def hyper_GD_1_3(P_args):
     P_search = P_args.copy()
     P_search.set_keys(
         name = 'Hyper_GD_1.3',
-        #dataset = 'SHL_ext',
-        dataset = 'Test',
+        dataset = 'SHL_ext',
 
         epochs_GD = 100,
         runs = 5,
@@ -774,8 +773,7 @@ def main():
         C_basic_train = args.BASIC,
         )
     
-    P_test = P_args.copy()
-    P_test.set_keys(
+    P_test = P_args.copy().set_keys(
         name = 'Test',
         dataset = 'Test',
 
@@ -809,9 +807,8 @@ def main():
         batch_size = 110
         ) 
     
-    P = P_args.copy()
-    P.set_keys(
-        name = 'evaluation',
+    P = P_args.copy().set_keys(
+        name = 'eval',
         dataset = 'SHL',
 
         epochs = 1500,
@@ -879,16 +876,8 @@ def main():
         hyperopt_GAN(P_test,eval_step=2,max_evals=5)
     
     if args.EVAL:
-        P_val = P.copy()
-        P_val.set_keys(
-            sample_no = None,
-            undersampling = False,
-            oversampling = False,
-            
-            )
-        
 
-        evaluate(P,P_val)
+        evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
         
         # for cross_val in ['user','none']:
         #     for basic_train in [True,False]:
@@ -897,7 +886,14 @@ def main():
         #                 C_basic_train = basic_train,
         #                 cross_val = cross_val,
         #                 )
-        #            evaluate(P,P_val)
+        #            evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+
+    if args.BASE:
+        P_base1 = P.copy().set_keys( name='eval_c_normal', dataset='SHL', epochs=1500, sample_no=400, undersampling=False, oversampling=False, )
+        P_base2 = P.copy().set_keys( name='eval_c_extended', dataset='SHL_ext', epochs=200, sample_no=None, undersampling=True, oversampling=False, )
+        
+        pytorch_baseline(P_base2,P_base2.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+        pytorch_baseline(P_base1,P_base1.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))   
 
     if args.MRMR:
         mrmr()
@@ -907,22 +903,12 @@ def main():
         
     if args.FX_NUM:
         plt_FX_num(P,max_n=454)
-        
-    if args.BASE:
-        P_val = P.copy()
-        P_val.set_keys(
-            sample_no = None,
-            undersampling = False,
-            oversampling = False,
-            )
 
-        pytorch_baseline(P,P_val)
-        
     if args.SEARCH:
         hyper_GAN_3_4(P_args)
     
     if args.SEARCH_C:
-        hyper_R_1_2(P_args)
+        hyper_R_1_3(P_args)
     
     if args.SEARCH_GD:
         hyper_GD_1_3(P_args)
