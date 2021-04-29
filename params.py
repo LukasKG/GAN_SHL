@@ -114,7 +114,7 @@ DEFAULT_PARAMS = {
         'channels'        : 'acc',                      # Sensor channels to be selected
         'magnitude'       : True,                       # True: Calculates the magnitude of acceleration
         
-        'Cross_val'       : 'user',                     # Crossvalidation mode, 'user' = as set in the individual users, 'user_x': days for user x seperatly, 'none': all data together
+        'cross_val'       : 'user',                     # Crossvalidation mode, 'user' = as set in the individual users, 'user_x': days for user x seperatly, 'none': all data together
         'User_L'          : 1,                          # User for the Labelled data
         'User_U'          : 2,                          # User for the Unlabelled data
         'User_V'          : 3,                          # User for the Validation data
@@ -217,6 +217,7 @@ class Params:
             self.set('channels',ch)
         elif self.get('channels') == 'acc':
             self.set('channels',ds.ACC_CHANNELS.copy())
+        return self
 
     def get_channel_list(self):
         self.update_channels()
@@ -269,17 +270,21 @@ class Params:
             epochs = self.get('epochs')
             self.set('epochs_GD',int(round(val*epochs)))
             self.set('epochs',epochs-self.get('epochs_GD'))
+        return self
     
     def set_keys(self,**kwargs):
         for key, val in locals()['kwargs'].items():
             self.set(key,val)
+        return self
         
     def update(self, dic):
         for key, val in dic.items():
             self.set(key,val)
+        return self
             
     def inc(self,key):
         self.params[key] += 1
+        return self
     
     def copy(self):
         return Params(copy.deepcopy(self.params))

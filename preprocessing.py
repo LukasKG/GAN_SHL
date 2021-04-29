@@ -81,20 +81,19 @@ def get_tensor(*args,cuda=True):
         res.append(X.to(device))
     return res
 
-def perform_preprocessing(P, datasets, sample_no=-1):
-    if sample_no == -1:
-        sample_no = P.get('sample_no')
-    assert sample_no is None or isinstance(sample_no,int) or isinstance(sample_no,tuple) and len(sample_no)==len(datasets)
+def perform_preprocessing(P_train, datasets, P_val=None):
+    if P_val is None: P_val = P_train
     
     X_full = np.concatenate([X for X, _ in datasets])
     
     ''' Perform standardization '''
-    scaler = preprocessing.StandardScaler(copy=False)
+    #scaler = preprocessing.StandardScaler(copy=False)
+    scaler = preprocessing.RobustScaler(copy=False)
     X_full = scaler.fit_transform(X_full)
     
     ''' Perform principle component analysis '''
-    if P.get('PCA_n_components') is not None:
-        pca = decomposition.PCA(n_components=P.get('PCA_n_components'), copy=False)
+    if P_train.get('PCA_n_components') is not None:
+        pca = decomposition.PCA(n_components=P_train.get('PCA_n_components'), copy=False)
         X_full = pca.fit_transform(X_full)
     
     ''' Scale data between -1 and 1 to fit the Generators tanh output '''
@@ -104,12 +103,13 @@ def perform_preprocessing(P, datasets, sample_no=-1):
     F = []
     idx = 0
     for i,(_,Y) in enumerate(datasets):
+        P = P_train if i<2 else P_val
         X = X_full[idx:idx+Y.shape[0]]
         idx+=Y.shape[0]
 
-        if sample_no is not None:
-            if isinstance(sample_no,tuple): no = sample_no[i]
-            else: no = sample_no
+        if P.get('sample_no') is not None:
+            if isinstance(P.get('sample_no'),tuple): no = P.get('sample_no')[i]
+            else: no = P.get('sample_no')
             samples = {k:no for k in P.get('labels')}
             X,Y = over_sampling(P, X, Y, samples)
             X,Y = under_sampling(P, X, Y)
@@ -167,8 +167,8 @@ def get_perm_dataloader(P,X,Y=None,batch_size=None):
     perm_dataloader = Permanent_Dataloader(dataloader)
     return perm_dataloader
 
-def get_all_dataloader(P, datasets, sample_no=-1):
-    F = perform_preprocessing(P, datasets, sample_no)
+def get_all_dataloader(P, datasets, P_val=None):
+    F = perform_preprocessing(P, datasets, P_val)
 
     DL_L = get_dataloader(P, *F[0])
     DL_U_iter = get_perm_dataloader(P, *F[1])

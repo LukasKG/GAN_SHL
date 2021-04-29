@@ -48,7 +48,7 @@ def sklearn_baseline(P):
     x_test, y_test = F[2]
     y_train, y_test = y_train.ravel(), y_test.ravel()
     
-    P.log('Cross_val: '+str(P.get('Cross_val')))
+    P.log('cross_val: '+str(P.get('cross_val')))
     P.log('   FX_num: '+str(P.get('FX_num')))
     
     ''' Multi-layer Perceptron '''
@@ -263,34 +263,23 @@ def hyperopt_Search(P,param_space,objective_func,eval_step=5,max_evals=None):
 def is_individual_dataload(param_space):
     return any(key in param_space for key in ['FX_num','batch_size'])
     
-def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None,num_G_samples=500):
+def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None,P_val=None):
     P.set('save_step',INF)
     P.set('R_active',False)
     
-    if 'FX_num' in param_space:
-        P.set('FX_num',None)
     F = ds.get_data(P)
     P.log("Data loaded.")
     
+    DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P,F,P_val)
+    P.log(f"Number of batches: Labelled = {len(DL_L)} | Unlabelled = {len(DL_U_iter)} | Validation = {len(DL_V)}")
+    
     if P.get('CUDA') and torch.cuda.is_available(): floatTensor = torch.cuda.FloatTensor
     else: floatTensor = torch.FloatTensor
-    
-    indivual_load = is_individual_dataload(param_space)
-    if not indivual_load:
-        DL = pp.get_all_dataloader(P,F)
-        P.log(f"Number of batches: Labelled = {len(DL[0])} | Unlabelled = {len(DL[1])} | Validation = {len(DL[2])}")
-    
+
     def obj(args):
         P0 = P.copy()
         P0.update(args)
-        P0.log("Check Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt')
-        
-        if indivual_load:
-            if 'FX_num' in args: F0 = ds.select_features(F,P0.get('FX_indeces'))
-            else: F0 = F
-            DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P0,F0)
-        else:
-            DL_L, DL_U_iter, DL_V = DL
+        P0.log("Check Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt') 
             
         perf_mat_C = np.empty(shape=(2,P.get('runs'),len(DL_V)))
         perf_mat_D = np.empty(shape=(2,P.get('runs')))
@@ -305,8 +294,8 @@ def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None,num_G_samples=500):
                     perf_mat_C[1,run,i] = calc_accuracy(C(XV), YV)
                     acc_D[i] = calc_accuracy(D(torch.cat((XV,YV),dim=1)),floatTensor(XV.shape[0],1).fill_(1.0))
                     
-                YV = floatTensor(pp.get_one_hot_labels(P0,num=num_G_samples)) 
-                perf_mat_D[0,run] = calc_accuracy(D(torch.cat((G(torch.cat((floatTensor(np.random.normal(0,1,(num_G_samples,P.get('noise_shape')))),YV),dim=1)),YV),dim=1)),floatTensor(num_G_samples,1).fill_(0.0))
+                YV = floatTensor(pp.get_one_hot_labels(P0,num=P0.get('batch_size'))) 
+                perf_mat_D[0,run] = calc_accuracy(D(torch.cat((G(torch.cat((floatTensor(np.random.normal(0,1,(P0.get('batch_size'),P0.get('noise_shape')))),YV),dim=1)),YV),dim=1)),floatTensor(P0.get('batch_size'),1).fill_(0.0))
                 perf_mat_D[1,run] = np.mean(acc_D)
               
         perf = np.mean(perf_mat_C.reshape(2,-1),axis=1)
@@ -317,30 +306,19 @@ def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None,num_G_samples=500):
     hyperopt_Search(P,param_space,obj,eval_step=eval_step,max_evals=max_evals)
         
 
-def hyperopt_R(P,param_space,eval_step=5,max_evals=None): 
+def hyperopt_R(P,param_space,eval_step=5,max_evals=None,P_val=None): 
     P.set('save_step',INF)
-    
-    if 'FX_num' in param_space:
-        P.set('FX_num',None)
+
     F = ds.get_data(P)
     P.log("Data loaded.")
     
-    indivual_load = is_individual_dataload(param_space)
-    if not indivual_load:
-        DL = pp.get_all_dataloader(P,F)
-        P.log(f"Number of batches: Labelled = {len(DL[0])} | Unlabelled = {len(DL[1])} | Validation = {len(DL[2])}")
+    DL_L, _, DL_V = pp.get_all_dataloader(P,F,P_val)
+    P.log(f"Number of batches: Labelled = {len(DL_L)} | Validation = {len(DL_V)}")
     
     def obj(args):
         P0 = P.copy()
         P0.update(args)
         P0.log("Check Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt')
-        
-        if indivual_load:
-            if 'FX_num' in args: F0 = ds.select_features(F,P0.get('FX_indeces'))
-            else: F0 = F
-            DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P0,F0)
-        else:
-            DL_L, DL_U_iter, DL_V = DL
         
         perf_mat = np.empty(shape=(2,P.get('runs'),len(DL_V)))
         for run in range(P0.get('runs')):
@@ -359,34 +337,21 @@ def hyperopt_R(P,param_space,eval_step=5,max_evals=None):
     hyperopt_Search(P,param_space,obj,eval_step=eval_step,max_evals=max_evals)  
 
 
-def hyperopt_GD(P,param_space,eval_step=5,max_evals=None,num_G_samples=500):
+def hyperopt_GD(P,param_space,eval_step=5,max_evals=None,P_val=None):
     P.set('save_step',INF)
       
-    if 'FX_num' in param_space:
-        P.set('FX_num',None)
     F = ds.get_data(P)
     P.log("Data loaded.")
     
+    DL_L, _, DL_V = pp.get_all_dataloader(P,F,P_val)
+    P.log(f"Number of batches: Labelled = {len(DL_L)} | Validation = {len(DL_V)}")
+    
     if P.get('CUDA') and torch.cuda.is_available(): floatTensor = torch.cuda.FloatTensor
     else: floatTensor = torch.FloatTensor
-    
-    indivual_load = is_individual_dataload(param_space)
-    if not indivual_load:
-        DL = pp.get_all_dataloader(P,F)
-        P.log(f"Number of batches: Labelled = {len(DL[0])} | Unlabelled = {len(DL[1])} | Validation = {len(DL[2])}")
-    
+     
     def obj(args):
         P0 = P.copy()
         P0.update(args)
-        P0.log("Check Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt')
-        
-        if indivual_load:
-            if 'FX_num' in args: F0 = ds.select_features(F,P0.get('FX_indeces'))
-            else: F0 = F
-            DL_L = pp.get_dataloader(P0, *F0[0])
-            DL_V = pp.get_dataloader(P0, *F0[2], batch_size=1024) 
-        else:
-            DL_L, _, DL_V = DL
 
         perf_mat = np.empty(shape=(2,P.get('runs')))
         for run in range(P0.get('runs')):
@@ -394,8 +359,8 @@ def hyperopt_GD(P,param_space,eval_step=5,max_evals=None,num_G_samples=500):
             G.eval();D.eval();
             
             with torch.no_grad():
-                YV = floatTensor(pp.get_one_hot_labels(P0,num=num_G_samples)) 
-                perf_mat[0,run] = calc_accuracy(D(torch.cat((G(torch.cat((floatTensor(np.random.normal(0,1,(num_G_samples,P.get('noise_shape')))),YV),dim=1)),YV),dim=1)),floatTensor(num_G_samples,1).fill_(0.0))
+                YV = floatTensor(pp.get_one_hot_labels(P0,num=P0.get('batch_size'))) 
+                perf_mat[0,run] = calc_accuracy(D(torch.cat((G(torch.cat((floatTensor(np.random.normal(0,1,(P0.get('batch_size'),P0.get('noise_shape')))),YV),dim=1)),YV),dim=1)),floatTensor(P0.get('batch_size'),1).fill_(0.0))
                 perf_mat[1,run] = np.mean([calc_accuracy(D(torch.cat((XV,YV),dim=1)),floatTensor(XV.shape[0],1).fill_(1.0)) for XV, YV in DL_V])
                 
         val = np.mean((0.5-perf_mat[0])**2) + 0.1 * np.mean((1-perf_mat[1])**2)
@@ -603,19 +568,21 @@ def mrmr(K=908,log=True):
 def hyper_GAN_3_4(P_args):
     P_search = P_args.copy()
     P_search.set_keys(
-        name = 'Hyper_GAN_3.3',
-        dataset = 'SHL',
-
-        epochs = 200,
+        name = 'Hyper_GAN_3.4',
+        #dataset = 'SHL_ext',
+        dataset = 'Test',
+        
+        epochs = 20,
         runs = 5,
         
         batch_size = 512,
-        FX_num = 50,
+        FX_num = 150,
         
-        FX_sel = 'combined',
+        FX_sel = 'all',
+        cross_val = 'combined',
         
-        sample_no = 400,
-        undersampling = False,
+        sample_no = None,
+        undersampling = True,
         oversampling = False,
         
         C_aco_func = 'gumbel',
@@ -652,7 +619,10 @@ def hyper_GAN_3_4(P_args):
         'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 1, 8, q=1)), 
     }   
     
-    hyperopt_GAN(P_search,param_space,eval_step=5,max_evals=None)
+    hyperopt_GAN(P_search,param_space,eval_step=5,max_evals=None,P_val=P_search.copy().set_keys(
+        sample_no = None,
+        undersampling = False,
+        oversampling = False,))
 
 def hyper_GAN_3_3(P_args):
     P_search = P_args.copy()
@@ -726,7 +696,7 @@ def hyper_GAN_3_2(P_args):
         batch_size = 512,
         
         FX_sel = 'all',
-        Cross_val = 'user',
+        cross_val = 'user',
         
         User_L = 3,
         User_U = 2,
@@ -775,18 +745,20 @@ def hyper_R_1_2(P_args):
     P_search = P_args.copy()
     P_search.set_keys(
         name = 'Hyper_R_1.2',
-        dataset = 'SHL',
-
+        #dataset = 'SHL_ext',
+        dataset = 'Test',
+        
         epochs = 100,
         runs = 5,
         
         batch_size = 512,
         
         FX_sel = 'all',
-        Cross_val = 'combined',
+        FX_num = 150,
+        cross_val = 'combined',
         
-        sample_no = 400,
-        undersampling = False,
+        sample_no = None,
+        undersampling = True,
         oversampling = False,
         
         R_aco_func = 'softmax',
@@ -796,7 +768,6 @@ def hyper_R_1_2(P_args):
     param_space={
         'RLR'             : hp.loguniform('RLR', np.log(0.00001), np.log(0.1)),
         'RB1'             : hp.loguniform('RB1', np.log(0.001), np.log(0.99)),
-        'FX_num'          : scope.int(hp.quniform('FX_num', 1, 454, q=1)),
         
         'R_ac_func'       : hp.choice('R_ac_func',['relu','leaky','leaky20','sig']),
         'R_hidden'        : scope.int(hp.qloguniform('R_hidden', np.log(16), np.log(4096), q=1)),
@@ -804,7 +775,10 @@ def hyper_R_1_2(P_args):
         'R_optim'         : hp.choice('R_optim',['Adam','AdamW','SGD']),
     } 
     
-    hyperopt_R(P_search,param_space,eval_step=5,max_evals=None)
+    hyperopt_GAN(P_search,param_space,eval_step=5,max_evals=None,P_val=P_search.copy().set_keys(
+        sample_no = None,
+        undersampling = False,
+        oversampling = False,))
 
 def hyper_R_1_1(P_args):
     P_search = P_args.copy()
@@ -818,7 +792,7 @@ def hyper_R_1_1(P_args):
         batch_size = 512,
         
         FX_sel = 'all',
-        Cross_val = 'user',
+        cross_val = 'user',
         
         User_L = 3,
         User_U = 2,
@@ -850,6 +824,51 @@ def hyper_R_1_1(P_args):
 #  Hyperopt Baseline Search
 # -------------------   
 
+def hyper_GD_1_3(P_args):
+    P_search = P_args.copy()
+    P_search.set_keys(
+        name = 'Hyper_GD_1.3',
+        #dataset = 'SHL_ext',
+        dataset = 'Test',
+
+        epochs_GD = 100,
+        runs = 5,
+        
+        batch_size = 512,
+        FX_num = 150,
+        
+        FX_sel = 'all',
+        cross_val = 'combined',
+        
+        sample_no = None,
+        undersampling = True,
+        oversampling = False,
+        
+        G_optim = 'SGD',
+        
+        D_optim = 'SGD',
+        ) 
+    
+    param_space={
+        'GLR'             : hp.loguniform('GLR', np.log(0.00001), np.log(0.1)),
+        'GB1'             : hp.loguniform('GB1', np.log(0.001), np.log(0.99)),
+        'DLR'             : hp.loguniform('DLR', np.log(0.00001), np.log(0.1)),
+        'DB1'             : hp.loguniform('DB1', np.log(0.001), np.log(0.99)),
+
+        'G_ac_func'       : hp.choice('G_ac_func',['relu','leaky','leaky20','sig']),
+        'G_hidden'        : scope.int(hp.qloguniform('G_hidden', np.log(16), np.log(4096), q=1)),
+        'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 0, 9, q=1)), 
+        
+        'D_ac_func'       : hp.choice('D_ac_func',['relu','leaky','leaky20','sig']),
+        'D_hidden'        : scope.int(hp.qloguniform('D_hidden', np.log(16), np.log(4096), q=1)),
+        'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 0, 9, q=1)), 
+    }
+    
+    hyperopt_GAN(P_search,param_space,eval_step=5,max_evals=None,P_val=P_search.copy().set_keys(
+        sample_no = None,
+        undersampling = False,
+        oversampling = False,))
+
 def hyper_GD_1_2(P_args):
     P_search = P_args.copy()
     P_search.set_keys(
@@ -863,7 +882,7 @@ def hyper_GD_1_2(P_args):
         FX_num = 454,
         
         FX_sel = 'all',
-        Cross_val = 'user',
+        cross_val = 'user',
         
         User_L = 3,
         User_U = 2,
@@ -907,7 +926,7 @@ def hyper_GD_1_1(P_args):
         batch_size = 512,
         
         FX_sel = 'all',
-        Cross_val = 'user',
+        cross_val = 'user',
         
         User_L = 3,
         User_U = 2,
@@ -954,9 +973,14 @@ def main():
     parser.add_argument('-eval', dest='EVAL', action='store_true')
     parser.set_defaults(EVAL=False)
     
+    parser.add_argument('-eval_r', dest='BASE', action='store_true')
+    parser.add_argument('-eval_c', dest='BASE', action='store_true')
+    parser.set_defaults(BASE=False)
+    
     parser.add_argument('-search', dest='SEARCH', action='store_true')
     parser.set_defaults(SEARCH=False)
     
+    parser.add_argument('-search_r', dest='SEARCH_C', action='store_true')
     parser.add_argument('-search_c', dest='SEARCH_C', action='store_true')
     parser.set_defaults(SEARCH_C=False)
     
@@ -968,10 +992,7 @@ def main():
     
     parser.add_argument('-sklearn', dest='SKLEARN', action='store_true')
     parser.set_defaults(SKLEARN=False)
-    
-    parser.add_argument('-base', dest='BASE', action='store_true')
-    parser.set_defaults(BASE=False)
-    
+
     parser.add_argument('-fx_num', dest='FX_NUM', action='store_true')
     parser.set_defaults(FX_NUM=False)
     
@@ -1011,7 +1032,7 @@ def main():
         runs = 1,
         
         FX_sel = 'all',
-        Cross_val = 'user',
+        cross_val = 'user',
         
         sample_no = None,
         undersampling = False,
@@ -1046,7 +1067,7 @@ def main():
         
         FX_sel = 'all',
         
-        Cross_val = 'combined',
+        cross_val = 'combined',
         
         sample_no = 400,
         undersampling = False,
@@ -1057,7 +1078,7 @@ def main():
         User_V = 3,
         
         batch_size = 512,
-        FX_num = 50, 
+        FX_num = 150, 
         
         CB1 = 0.001508163984430861, 
         CLR = 0.0039035726898435474, 
@@ -1121,7 +1142,7 @@ def main():
         #            P.set_keys(
         #                 name = '_'.join(['eval','C',('Complete' if basic_train else 'GAN'),cross_val,'cross']),
         #                 C_basic_train = basic_train,
-        #                 Cross_val = cross_val,
+        #                 cross_val = cross_val,
         #                 )
         #            evaluate(P,P_val)
 
@@ -1151,7 +1172,7 @@ def main():
         hyper_R_1_2(P_args)
     
     if args.SEARCH_GD:
-        hyper_GD_1_2(P_args)
+        hyper_GD_1_3(P_args)
     
 if __name__ == "__main__":
     main()

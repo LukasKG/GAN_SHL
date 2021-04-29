@@ -34,10 +34,12 @@ LABELS_SHL = {
         }
 
 # Which processed datasets to store
-SAVE_DATA = ['SHL','Short']
+SAVE_DATA = ['SHL','SHL_ext','Short']
 
 PATHS = {
     'SHL': '/SHL_Dataset_preview_v1/',
+    'User1': '/SHL_User1/release/',
+    'SHL_ext': None,
     'Short': None,
     'Test': None,
     'Sincos': None,
@@ -72,7 +74,11 @@ def reduce_labels(data,label,label_remain):
 def read_day(P,uid='User1',recid='220617'):
     path = get_path(P) + uid + '/' + recid + '/'
     
-    X = pd.read_csv(path+P.get('location')+'_Motion.txt',sep=' ',names=NAMES_X)
+    try:
+        X = pd.read_csv(path+P.get('location')+'_Motion.txt',sep=' ',names=NAMES_X)
+    except FileNotFoundError as e:
+        P.log(str(e))
+        return None
     Y = pd.read_csv(path+'Label.txt',sep=' ',names=NAMES_Y)
     
     # Select acceleration channels
@@ -92,24 +98,19 @@ def read_day(P,uid='User1',recid='220617'):
     
     return data, label
 
-
-def read_user(P,uid='User1',noise=None):
-    assert uid in ['User1', 'User2', 'User3']
+def read_user(P,uid,recids,noise=None):
     
-    if uid == 'User1':
-        recids = ['220617','260617','270617']
-    elif uid == 'User2':
-        recids = ['140617','140717','180717']
-    else:
-        recids = ['030717','070717','140617']
-        
     for i,recid in enumerate(recids):
-        if i==0:
-            data, label = read_day(P,uid=uid,recid=recid)
-        else:
-            tmpD, tmpL = read_day(P,uid=uid,recid=recid)
-            data = pd.concat([data,tmpD],axis=0)
-            label = pd.concat([label,tmpL],axis=0)
+        
+        day = read_day(P,uid=uid,recid=recid)
+        
+        if day is not None:
+            if i==0:
+                data, label = day
+            else:
+                tmpD, tmpL = day
+                data = pd.concat([data,tmpD],axis=0)
+                label = pd.concat([label,tmpL],axis=0)
     
     # Apply noise
     if noise is None:
@@ -124,6 +125,25 @@ def read_user(P,uid='User1',noise=None):
         data = data.drop(ACC_CHANNELS, axis=1)
 
     return data, label
+
+def read_user1(P,noise=None):
+    path = get_path(P) + 'User1/'
+
+    recids = [s.split('/')[-1] for s in [x[0] for x in os.walk(path)]][1:]
+
+    return read_user(P,'User1',recids,noise)
+
+def read_user_preview(P,uid='User1',noise=None):
+    assert uid in ['User1', 'User2', 'User3']
+    
+    if uid == 'User1':
+        recids = ['220617','260617','270617']
+    elif uid == 'User2':
+        recids = ['140617','140717','180717']
+    else:
+        recids = ['030717','070717','140617']
+        
+    return read_user(P,uid,recids,noise)
 
 def get_random_signal(length,channels):
     X = np.empty((length,channels))
@@ -153,7 +173,10 @@ def read_data(P):
     noise = P.get('noise')
     
     if P.get('dataset') == 'SHL':
-        V = [ read_user(P, uid='User%d'%i, noise=noise) for i in range(1,4) ]
+        V = [ read_user_preview(P, uid='User%d'%i, noise=noise) for i in range(1,4) ]
+    elif P.get('dataset') == 'SHL_ext':
+        V = [ read_user1(P.copy().set('dataset', 'User1'),noise=noise) ]
+        V += [ read_user_preview(P.copy().set('dataset', 'SHL'), uid='User%d'%i, noise=noise) for i in range(2,4) ]
     elif P.get('dataset') == 'Short':
         for _ in range(1,4):
             X = get_random_signal(P.get('dummy_size'),len(P.get('channels')) - (2 if P.get('magnitude') else 0))
@@ -296,17 +319,17 @@ def get_data(P):
         F = select_features(F,P.get('FX_indeces'))
         P.log(f"{F[0][0].shape[1]} features selected.")
     
-    if P.get('Cross_val') == 'user':
+    if P.get('cross_val') == 'user':
         return [F[P.get('User_L')-1], F[P.get('User_U')-1], F[P.get('User_V')-1]]
     
     # User 1 as labelled, User 2+3 as unlabelled/validation data
-    if P.get('Cross_val') == 'combined':
+    if P.get('cross_val') == 'combined':
         XL, YL = F[0]
         XU = np.concatenate([X for X,_ in F[1:]])
         YU = np.concatenate([Y for _,Y in F[1:]])
         return [[XL,YL], [XU,YU], [XU,YU]] 
         
-    if P.get('Cross_val') == 'none':
+    if P.get('cross_val') == 'none':
         X = np.concatenate([X for X,_ in F])
         Y = np.concatenate([Y for _,Y in F])
         return [[X,Y], [X,Y], [X,Y]]    
@@ -324,6 +347,7 @@ if __name__ == "__main__":
     from params import Params
     
     dataset = 'SHL'
+    dataset = 'SHL_ext'
     #dataset = 'Short'
     #dataset = 'Test'
     
@@ -331,9 +355,9 @@ if __name__ == "__main__":
     FX_sel = 'auto_correlation'
     FX_sel = 'all'
     
-    Cross_val = 'user'
-    #Cross_val = 'combined'
-    #Cross_val = 'none'
+    cross_val = 'user'
+    #cross_val = 'combined'
+    #cross_val = 'none'
     
     labels = None
     #labels = [1,2,3]
@@ -341,7 +365,7 @@ if __name__ == "__main__":
     magnitude = True
     #magnitude = False
     
-    P = Params(dataset=dataset,labels=labels,FX_sel=FX_sel,magnitude=magnitude,Cross_val=Cross_val)
+    P = Params(dataset=dataset,labels=labels,FX_sel=FX_sel,magnitude=magnitude,cross_val=cross_val)
     
     F = get_data(P)
     
