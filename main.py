@@ -258,10 +258,6 @@ def hyperopt_Search(P,param_space,objective_func,eval_step=5,max_evals=None):
         for key,val in space_eval(param_space, best_param).items():
             P.log(str(key)+': '+str(val),name='hyperopt')
         P.log(f"Best Performance: {abs(min(trials.losses())):.5f} - Copy Params: "+" ".join([key+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val))+',' for key,val in space_eval(param_space, best_param).items()]),name='hyperopt')   
-
-
-def is_individual_dataload(param_space):
-    return any(key in param_space for key in ['FX_num','batch_size'])
     
 def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None,P_val=None):
     P.set('save_step',INF)
@@ -569,8 +565,7 @@ def hyper_GAN_3_4(P_args):
     P_search = P_args.copy()
     P_search.set_keys(
         name = 'Hyper_GAN_3.4',
-        #dataset = 'SHL_ext',
-        dataset = 'Test',
+        dataset = 'SHL_ext',
         
         epochs = 20,
         runs = 5,
@@ -623,119 +618,6 @@ def hyper_GAN_3_4(P_args):
         sample_no = None,
         undersampling = False,
         oversampling = False,))
-
-def hyper_GAN_3_3(P_args):
-    P_search = P_args.copy()
-    P_search.set_keys(
-        name = 'Hyper_GAN_3.3',
-        dataset = 'SHL',
-
-        epochs = 200,
-        runs = 5,
-        
-        batch_size = 512,
-        FX_num = 454,
-        
-        FX_sel = 'all',
-        
-        User_L = 3,
-        User_U = 2,
-        User_V = 1,
-        
-        sample_no = None,
-        undersampling = True,
-        oversampling = False,
-        
-        C_aco_func = 'gumbel',
-        
-        D_optim = 'SGD', 
-
-        G_optim = 'SGD',
-        
-        ) 
-    
-    param_space={
-        'GD_ratio'        : hp.uniform('GD_ratio', 0, 0.9),
-        
-        'CLR'             : hp.loguniform('CLR', np.log(0.00001), np.log(0.1)),
-        'CB1'             : hp.loguniform('CB1', np.log(0.001), np.log(0.99)),
-        
-        'C_ac_func'       : hp.choice('C_ac_func',['relu','leaky','leaky20','sig']),
-        'C_hidden'        : scope.int(hp.qloguniform('C_hidden', np.log(16), np.log(4096), q=1)),
-        'C_hidden_no'     : scope.int(hp.quniform('C_hidden_no', 1, 8, q=1)), 
-        'C_optim'         : hp.choice('C_optim',['AdamW','SGD']),
-        'C_tau'           : hp.loguniform('C_tau', np.log(0.01), np.log(10.)),
-        
-        'GLR'             : hp.loguniform('GLR', np.log(0.00001), np.log(0.1)),
-        'GB1'             : hp.loguniform('GB1', np.log(0.001), np.log(0.99)),
-        'DLR'             : hp.loguniform('DLR', np.log(0.00001), np.log(0.1)),
-        'DB1'             : hp.loguniform('DB1', np.log(0.001), np.log(0.99)),
-
-        'G_ac_func'       : hp.choice('G_ac_func',['relu','leaky','leaky20','sig']),
-        'G_hidden'        : scope.int(hp.qloguniform('G_hidden', np.log(16), np.log(4096), q=1)),
-        'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 1, 8, q=1)), 
-        
-        'D_ac_func'       : hp.choice('D_ac_func',['relu','leaky','leaky20','sig']),
-        'D_hidden'        : scope.int(hp.qloguniform('D_hidden', np.log(16), np.log(4096), q=1)),
-        'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 1, 8, q=1)), 
-    }   
-    
-    hyperopt_GAN(P_search,param_space,eval_step=5,max_evals=None)
-    
-
-def hyper_GAN_3_2(P_args):
-    P_search = P_args.copy()
-    P_search.set_keys(
-        name = 'Hyper_GAN_3.2',
-        dataset = 'SHL',
-
-        epochs = 100,
-        epochs_GD = 100,
-        runs = 5,
-        
-        batch_size = 512,
-        
-        FX_sel = 'all',
-        cross_val = 'user',
-        
-        User_L = 3,
-        User_U = 2,
-        User_V = 1,
-        
-        sample_no = None,
-        undersampling = True,
-        oversampling = False,
-        ) 
-    
-    param_space={
-        'FX_num'          : scope.int(hp.quniform('FX_num', 200, 500, q=1)),
-        'epochs_GD'       : scope.int(hp.quniform('epochs_GD', 0, 100, q=1)),
-        
-        'GLR'             : hp.loguniform('GLR', np.log(0.00001), np.log(0.1)),
-        'GB1'             : hp.loguniform('GB1', np.log(0.001), np.log(0.99)),
-        'DLR'             : hp.loguniform('DLR', np.log(0.00001), np.log(0.1)),
-        'DB1'             : hp.loguniform('DB1', np.log(0.001), np.log(0.99)),
-        'CLR'             : hp.loguniform('CLR', np.log(0.00001), np.log(0.1)),
-        'CB1'             : hp.loguniform('CB1', np.log(0.001), np.log(0.99)),
-        
-        'G_ac_func'       : hp.choice('G_ac_func',['relu','leaky','leaky20','sig']),
-        'G_hidden'        : scope.int(hp.qloguniform('G_hidden', np.log(16), np.log(4096), q=1)),
-        'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 0, 9, q=1)), 
-        'G_optim'         : hp.choice('G_optim',['AdamW','SGD']),
-        
-        'D_ac_func'       : hp.choice('D_ac_func',['relu','leaky','leaky20','sig']),
-        'D_hidden'        : scope.int(hp.qloguniform('D_hidden', np.log(16), np.log(4096), q=1)),
-        'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 0, 9, q=1)), 
-        'D_optim'         : hp.choice('D_optim',['AdamW','SGD']),
-        
-        'C_ac_func'       : hp.choice('C_ac_func',['relu','leaky','leaky20','sig']),
-        'C_hidden'        : scope.int(hp.qloguniform('C_hidden', np.log(16), np.log(4096), q=1)),
-        'C_hidden_no'     : scope.int(hp.quniform('C_hidden_no', 0, 9, q=1)), 
-        'C_optim'         : hp.choice('C_optim',['AdamW','SGD']),
-        'C_tau'           : hp.loguniform('C_tau', np.log(0.01), np.log(10.)),
-    }   
-    
-    hyperopt_GAN(P_search,param_space,eval_step=5,max_evals=None)
  
 # -------------------
 #  Hyperopt Baseline Search
@@ -745,8 +627,7 @@ def hyper_R_1_2(P_args):
     P_search = P_args.copy()
     P_search.set_keys(
         name = 'Hyper_R_1.2',
-        #dataset = 'SHL_ext',
-        dataset = 'Test',
+        dataset = 'SHL_ext',
         
         epochs = 100,
         runs = 5,
@@ -779,46 +660,6 @@ def hyper_R_1_2(P_args):
         sample_no = None,
         undersampling = False,
         oversampling = False,))
-
-def hyper_R_1_1(P_args):
-    P_search = P_args.copy()
-    P_search.set_keys(
-        name = 'Hyper_R_1.1',
-        dataset = 'SHL',
-
-        epochs = 100,
-        runs = 5,
-        
-        batch_size = 512,
-        
-        FX_sel = 'all',
-        cross_val = 'user',
-        
-        User_L = 3,
-        User_U = 2,
-        User_V = 1,
-        
-        sample_no = None,
-        undersampling = True,
-        oversampling = False,
-        
-        R_aco_func = 'softmax',
-        R_tau = None,
-        ) 
-    
-    param_space={
-        'FX_num'          : scope.int(hp.quniform('FX_num', 1, 500, q=1)),
-
-        'RLR'             : hp.loguniform('RLR', np.log(0.00001), np.log(0.1)),
-        'RB1'             : hp.loguniform('RB1', np.log(0.001), np.log(0.99)),
-        
-        'R_ac_func'       : hp.choice('R_ac_func',['relu','leaky','leaky20','sig']),
-        'R_hidden'        : scope.int(hp.qloguniform('R_hidden', np.log(16), np.log(4096), q=1)),
-        'R_hidden_no'     : scope.int(hp.quniform('R_hidden_no', 0, 9, q=1)), 
-        'R_optim'         : hp.choice('R_optim',['Adam','AdamW','SGD']),
-    } 
-    
-    hyperopt_R(P_search,param_space,eval_step=5,max_evals=None)
 
 # -------------------
 #  Hyperopt Baseline Search
@@ -869,94 +710,6 @@ def hyper_GD_1_3(P_args):
         undersampling = False,
         oversampling = False,))
 
-def hyper_GD_1_2(P_args):
-    P_search = P_args.copy()
-    P_search.set_keys(
-        name = 'Hyper_GD_1.2',
-        dataset = 'SHL',
-
-        epochs_GD = 100,
-        runs = 5,
-        
-        batch_size = 512,
-        FX_num = 454,
-        
-        FX_sel = 'all',
-        cross_val = 'user',
-        
-        User_L = 3,
-        User_U = 2,
-        User_V = 1,
-        
-        sample_no = None,
-        undersampling = True,
-        oversampling = False,
-        
-        G_optim = 'SGD',
-        
-        D_optim = 'SGD',
-        ) 
-    
-    param_space={
-        'GLR'             : hp.loguniform('GLR', np.log(0.00001), np.log(0.1)),
-        'GB1'             : hp.loguniform('GB1', np.log(0.001), np.log(0.99)),
-        'DLR'             : hp.loguniform('DLR', np.log(0.00001), np.log(0.1)),
-        'DB1'             : hp.loguniform('DB1', np.log(0.001), np.log(0.99)),
-
-        'G_ac_func'       : hp.choice('G_ac_func',['relu','leaky','leaky20','sig']),
-        'G_hidden'        : scope.int(hp.qloguniform('G_hidden', np.log(16), np.log(4096), q=1)),
-        'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 0, 9, q=1)), 
-        
-        'D_ac_func'       : hp.choice('D_ac_func',['relu','leaky','leaky20','sig']),
-        'D_hidden'        : scope.int(hp.qloguniform('D_hidden', np.log(16), np.log(4096), q=1)),
-        'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 0, 9, q=1)), 
-    }
-    
-    hyperopt_GD(P_search,param_space,eval_step=5,max_evals=None)
-
-def hyper_GD_1_1(P_args):
-    P_search = P_args.copy()
-    P_search.set_keys(
-        name = 'Hyper_GD_1.1',
-        dataset = 'SHL',
-
-        epochs_GD = 100,
-        runs = 5,
-        
-        batch_size = 512,
-        
-        FX_sel = 'all',
-        cross_val = 'user',
-        
-        User_L = 3,
-        User_U = 2,
-        User_V = 1,
-        
-        sample_no = None,
-        undersampling = True,
-        oversampling = False,
-        ) 
-    
-    param_space={
-        'FX_num'          : scope.int(hp.quniform('FX_num', 200, 500, q=1)),
-        
-        'GLR'             : hp.loguniform('GLR', np.log(0.00001), np.log(0.1)),
-        'GB1'             : hp.loguniform('GB1', np.log(0.001), np.log(0.99)),
-        'DLR'             : hp.loguniform('DLR', np.log(0.00001), np.log(0.1)),
-        'DB1'             : hp.loguniform('DB1', np.log(0.001), np.log(0.99)),
-
-        'G_ac_func'       : hp.choice('G_ac_func',['relu','leaky','leaky20','sig']),
-        'G_hidden'        : scope.int(hp.qloguniform('G_hidden', np.log(16), np.log(4096), q=1)),
-        'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 0, 9, q=1)), 
-        'G_optim'         : hp.choice('G_optim',['AdamW','SGD']),
-        
-        'D_ac_func'       : hp.choice('D_ac_func',['relu','leaky','leaky20','sig']),
-        'D_hidden'        : scope.int(hp.qloguniform('D_hidden', np.log(16), np.log(4096), q=1)),
-        'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 0, 9, q=1)), 
-        'D_optim'         : hp.choice('D_optim',['AdamW','SGD']),
-    }
-    
-    hyperopt_GD(P_search,param_space,eval_step=5,max_evals=None)
 
 def main():
     import argparse
