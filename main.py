@@ -1048,7 +1048,7 @@ def main():
         
         Cross_val = 'combined',
         
-        sample_no = None,
+        sample_no = 400,
         undersampling = False,
         oversampling = False,
         
@@ -1081,14 +1081,15 @@ def main():
         G_hidden_no = 1,
 
         
-        RB1 = 0.13905385615810364, 
-        RLR = 2.6665447517436225e-05, 
-        R_ac_func = 'leaky', 
-        R_aco_func = 'softmax', 
-        R_hidden = 2719, 
-        R_hidden_no = 3, 
-        R_optim = 'AdamW', 
-        R_tau = 0.606889373892653,
+        RB1 = 0.011464688009852337, 
+        RLR = 0.014508298446114655, 
+        R_ac_func = 'leaky20', 
+        R_hidden = 81, 
+        R_hidden_no = 4, 
+        R_optim = 'Adam',
+ 
+
+
         ) 
     
 

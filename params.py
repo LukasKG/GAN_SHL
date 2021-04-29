@@ -119,7 +119,7 @@ DEFAULT_PARAMS = {
         'User_U'          : 2,                          # User for the Unlabelled data
         'User_V'          : 3,                          # User for the Validation data
         
-        'FX_sel'          : 'basic',                    # Which features to extract
+        'FX_sel'          : 'all',                      # Which features to extract
         'FX_indeces'      : None,                       # Which features to select after extraction. None = all
         'FX_num'          : None,                       # If given, select the n best features (overwrites 'FX_indeces')
         
@@ -134,7 +134,7 @@ DEFAULT_PARAMS = {
         
         'sample_no'       : None,                       # Not None: number of samples to reduce/increase all classes to
         'undersampling'   : False,                      # True: undersample all majority classes
-        'oversampling'    : True,                       # True: oversample all minority classes  
+        'oversampling'    : False,                      # True: oversample all minority classes  
         'PCA_n_components': None,                       # Number of components for PCA
         
         'epochs'          : 500,                        # Number of regular training epochs
@@ -143,10 +143,6 @@ DEFAULT_PARAMS = {
         'save_step'       : 10,                         # Number of epochs after which results are stored
         'batch_size'      : 512,                        # Number of samples per batch
         'noise_shape'     : 100,                        # Size of random noise Z
-
-        'G_no'            : 1,                          # Model number of the new generator
-        'D_no'            : 1,                          # Model number of the new discriminator
-        'C_no'            : 1,                          # Model number of the new classifier
         
         'G_label_sample'  : True,                       # True: randomly sample input labels for G | False: use current sample batch as input
         'G_label_factor'  : 1,                          # Size factor of the input for G in relation to current batch
@@ -253,9 +249,7 @@ class Params:
         return str(self.get_dataset_hash())
 
     def log(self,txt:str,save:bool=True,error:bool=False,name:str=None):
-        if name is None:
-            name = self.get('log_name')
-        writeLog(txt,save=save,error=error,name=name)
+        writeLog(txt,save=save,error=error,name=(self.get('name')+'_log'))
 
     def save(self):
         make_dir_mod()
