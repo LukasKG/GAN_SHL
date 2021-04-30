@@ -344,7 +344,18 @@ def select_features(F_base,indeces):
     return F_new
 
 if __name__ == "__main__":
+    import argparse
+    from params import DEFAULT_PARAMS as default
     from params import Params
+    
+    parser = argparse.ArgumentParser()
+      
+    parser.add_argument('-data_path', type=str, dest='data_path')
+    parser.set_defaults(data_path=default['data_path'])
+    
+    args = parser.parse_args()
+    
+    
     
     dataset = 'SHL'
     dataset = 'SHL_ext'
@@ -365,7 +376,7 @@ if __name__ == "__main__":
     magnitude = True
     #magnitude = False
     
-    P = Params(dataset=dataset,labels=labels,FX_sel=FX_sel,magnitude=magnitude,cross_val=cross_val)
+    P = Params(data_path=args.data_path,dataset=dataset,labels=labels,FX_sel=FX_sel,magnitude=magnitude,cross_val=cross_val)
     
     F = get_data(P)
     

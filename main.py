@@ -20,6 +20,7 @@ if __package__ is None or __package__ == '':
     import GAN
     from metrics import calc_accuracy, calc_f1score
     from network import clear_cache
+    from sklearn_functions import sklearn_baseline, plt_FX_num
     from params import Params, save_fig, save_trials, load_trials
     from plot_confusion_matrix import plot_confusion_matrix
     import preprocessing as pp
@@ -35,94 +36,6 @@ else:
 # -------------------
 #  Baseline
 # -------------------
-   
-def sklearn_baseline(P):
-    from sklearn.neural_network import MLPClassifier as MLP
-    from sklearn.ensemble import RandomForestClassifier
-    from sklearn.metrics import accuracy_score, f1_score
-    P.log(P)
-        
-    F = pp.perform_preprocessing(P, ds.get_data(P))
-    
-    x_train, y_train = F[0]
-    x_test, y_test = F[2]
-    y_train, y_test = y_train.ravel(), y_test.ravel()
-    
-    P.log('cross_val: '+str(P.get('cross_val')))
-    P.log('   FX_num: '+str(P.get('FX_num')))
-    
-    ''' Multi-layer Perceptron '''
-    mlp = MLP(hidden_layer_sizes=(100,100),max_iter=500)
-    mlp.fit(x_train, y_train)
-
-    y_pred = mlp.predict(x_train) 
-    P.log(f"MLP Acc Train: {accuracy_score(y_train,y_pred):.2f}")
-    P.log(f"MLP  F1 Train: {f1_score(y_train,y_pred,average='weighted'):.2f}")
-    
-    y_pred = mlp.predict(x_test)
-    P.log(f"MLP Acc  Test: {accuracy_score(y_test,y_pred):.2f}")
-    P.log(f"MLP  F1  Test: {f1_score(y_test,y_pred,average='weighted'):.2f}")
-    P.log(F"MLP Iterations = {mlp.n_iter_}")
-    
-    ''' Random Forest Classifier '''
-    rfc = RandomForestClassifier()
-    rfc.fit(x_train, y_train)
-    
-    y_pred = rfc.predict(x_train)
-    P.log(f"RFC Acc Train: {accuracy_score(y_train,y_pred):.2f}")
-    P.log(f"RFC  F1 Train: {f1_score(y_train,y_pred,average='weighted'):.2f}")
-    
-    y_pred = rfc.predict(x_test)
-    P.log(f"RFC Acc  Test: {accuracy_score(y_test,y_pred):.2f}")
-    P.log(f"RFC  F1  Test: {f1_score(y_test,y_pred,average='weighted'):.2f}")
-
-
-def plt_FX_num(P,max_n=908):
-    from sklearn.neural_network import MLPClassifier as MLP
-    from sklearn.metrics import accuracy_score, f1_score
-    
-    P.set('FX_indeces',None)
-    P.set('log_name','fx_num')
-    F = pp.perform_preprocessing(P, ds.get_data(P))
-    
-    mat = np.empty(shape=(3,max_n))
-    FX = np.arange(1,max_n+1,1)
-    for fx in FX:
-        P.set('FX_num',fx)
-        F0 = ds.select_features(F,P.get('FX_indeces'))
-        
-        x_train, y_train = F0[0]
-        x_test, y_test = F0[2]
-
-        res = np.empty(shape=(3,P.get('runs')))
-        for run in range(P.get('runs')):
-
-            mlp = MLP(hidden_layer_sizes=(100,100),max_iter=2000)
-            mlp.fit(x_train, y_train.ravel())
-            res[0,run] = accuracy_score(y_test.ravel(),mlp.predict(x_test))
-            res[1,run] = f1_score(y_test.ravel(),mlp.predict(x_test),average='weighted')
-            res[2,run] = mlp.n_iter_
-    
-        mat[:,fx-1] = np.mean(res,axis=1)
-        P.log(f"Fx_num = {fx}: [Acc = {mat[0,fx-1]:.2f}] [F1 = {mat[1,fx-1]:.2f}] [{mat[2,fx-1]:.2f} iterations]")
-        
-    plt.figure(figsize=(27,9),dpi=300,clear=True)
-    fig, ax = plt.subplots()
-    
-    ax.plot(FX,mat[0],linestyle='solid',label='Accuracy')
-    ax.plot(FX,mat[1],linestyle='solid',label='F1 Score')
-    
-    ax.legend()
-    ax.set_xlabel('FX_num')
-    ax.set_ylabel('Performance')
-    
-    ax.set_xlim(1,max_n)
-    ax.grid()
-    save_fig(P,'eval_fx_num',fig)
-    
-    ax.plot(FX,mat[2]/np.max(mat[2]),linestyle='solid',label='Iterations')
-    ax.legend()
-    save_fig(P,'eval_fx_num_iterations',fig)
 
 def pytorch_baseline(P,P_val=None,num=None):
     P.set('epochs_GD',0)
@@ -133,12 +46,8 @@ def pytorch_baseline(P,P_val=None,num=None):
     else:
         P.log("CPU Training.")
     
-    DL_L, _, DL_V = pp.get_all_dataloader(P, ds.get_data(P))
+    DL_L, _, DL_V = pp.get_all_dataloader(P, ds.get_data(P), P_val)
     P.log(f"Number of batches: Labelled = {len(DL_L)} | Validation = {len(DL_V)}")
-    
-    if P_val is not None:
-        P.log("Load Validation data.")
-        _, _, DL_V = pp.get_all_dataloader(P_val, ds.get_data(P_val))
 
         
     ACC = None
@@ -374,12 +283,8 @@ def get_Results(P,P_val=None):
     else:
         P.log("CPU Training.")
     
-    DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, ds.get_data(P))
+    DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, ds.get_data(P), P_val)
     P.log(f"Number of batches: Labelled = {len(DL_L)} | Unlabelled = {len(DL_U_iter)} | Validation = {len(DL_V)}")
-    
-    if P_val is not None:
-        P.log("Load Validation data.")
-        _, _, DL_V = pp.get_all_dataloader(P_val, ds.get_data(P_val))
     
     ACC = None
     F1S = None
@@ -508,17 +413,24 @@ def evaluate(P,P_val=None):
         plot_confusion_matrix(con_mat,P,name=name+'_normalised',title='Confusion matrix',fmt='0.3f')
 
    
-def mrmr(K=908,log=True):
+def mrmr(K=908,log=True,down_to=183,dataset='SHL'):
     import pandas as pd
     from sklearn.feature_selection import f_regression
+    from preprocessing import under_sampling
     
     from sliding_window import get_FX_names
    
-    P = Params(dataset='SHL',FX_sel='all',cross_val='user',log_name='mrmr')
-    F = ds.load_data(P)
+    P = Params(name='mRMR_reduced_user1',dataset=dataset,FX_sel='all',cross_val='user',log_name='mrmr')
+    V = ds.load_data(P)
+    
+    samples = {k:down_to for k in P.get('labels')}
+    F = [under_sampling(X0, Y0, samples) for X0, Y0 in V]
     
     X = np.concatenate([X0 for X0,_ in F])
     Y = np.concatenate([Y0 for _,Y0 in F])
+   
+    P.log(f"X: {X.shape}, Y: {Y.shape}")
+    P.log(', '.join([ f"{int(val)}: {count}" for val,count in zip(*np.unique(Y,return_counts=True))]))
    
     X = pd.DataFrame(X, columns = get_FX_names())
     Y = pd.Series(Y.ravel())
@@ -576,8 +488,8 @@ def hyper_GAN_3_4(P_args):
         FX_sel = 'all',
         cross_val = 'combined',
         
-        sample_no = None,
-        undersampling = True,
+        sample_no = 512,
+        undersampling = False,
         oversampling = False,
         
         C_aco_func = 'gumbel',
@@ -638,8 +550,8 @@ def hyper_R_1_3(P_args):
         FX_num = 150,
         cross_val = 'combined',
         
-        sample_no = None,
-        undersampling = True,
+        sample_no = 512,
+        undersampling = False,
         oversampling = False,
         
         R_aco_func = 'softmax',
@@ -745,8 +657,8 @@ def main():
     parser.add_argument('-sklearn', dest='SKLEARN', action='store_true')
     parser.set_defaults(SKLEARN=False)
 
-    parser.add_argument('-fx_num', dest='FX_NUM', action='store_true')
-    parser.set_defaults(FX_NUM=False)
+    parser.add_argument('-fx_num', type=int, dest='FX_NUM')
+    parser.set_defaults(FX_NUM=None)
     
     parser.add_argument('-cuda', dest='CUDA', action='store_true')
     parser.add_argument('-cpu', dest='CUDA', action='store_false')
@@ -819,7 +731,7 @@ def main():
         
         cross_val = 'combined',
         
-        sample_no = 400,
+        sample_no = None,
         undersampling = False,
         oversampling = False,
         
@@ -892,17 +804,25 @@ def main():
         P_base1 = P.copy().set_keys( name='eval_c_normal', dataset='SHL', epochs=1500, sample_no=400, undersampling=False, oversampling=False, )
         P_base2 = P.copy().set_keys( name='eval_c_extended', dataset='SHL_ext', epochs=200, sample_no=None, undersampling=True, oversampling=False, )
         
+        pytorch_baseline(P_base1,P_base1.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, )) 
         pytorch_baseline(P_base2,P_base2.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
-        pytorch_baseline(P_base1,P_base1.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))   
+    
 
+    indeces = None
     if args.MRMR:
-        mrmr()
+        down_to = 183
+        try: 
+            selected, indeces = mrmr(down_to=down_to,dataset='SHL_ext')
+        except Exception as e:
+            print(e)
+            selected, indeces = mrmr(down_to=down_to,dataset='SHL')
         
     if args.SKLEARN:
         sklearn_baseline(P)
         
-    if args.FX_NUM:
-        plt_FX_num(P,max_n=454)
+    if args.FX_NUM is not None:
+        P_fx_num = P.copy().set_keys( name='fx_num', dataset='SHL_ext', runs=8, sample_no=512, undersampling=False, oversampling=False, )
+        plt_FX_num(P_fx_num,max_n=args.FX_NUM,P_val=P_fx_num.copy().set_keys(sample_no=None, undersampling=False, oversampling=False,),indeces=indeces)
 
     if args.SEARCH:
         hyper_GAN_3_4(P_args)

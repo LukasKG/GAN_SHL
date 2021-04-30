@@ -25,7 +25,7 @@ def select_random(X0,Y0=None,ratio=1.0):
         Y1 = Y0[idx]
     return X1, Y1
     
-def over_sampling(P,X,Y,ss='not majority'):
+def over_sampling(X,Y,ss='not majority'):
     Y = Y.ravel()
     if isinstance(ss,dict):
         ss = ss.copy()
@@ -35,11 +35,14 @@ def over_sampling(P,X,Y,ss='not majority'):
     data, labels = sampler.fit_resample(X, Y)
     return data, labels
 
-def under_sampling(P,X,Y,ss='not minority'):
+def under_sampling(X,Y,ss='not minority'):
     Y = Y.ravel()
+    if isinstance(ss,dict):
+        ss = ss.copy()
+        for y, c in zip(*np.unique(Y,return_counts=True)):
+            ss[y] = min(ss[y],c)
     sampler = NearMiss(sampling_strategy=ss)
     data, labels = sampler.fit_resample(X, Y)
-
     return data, labels
 
 def get_one_hot_labels(P,num):
@@ -103,22 +106,24 @@ def perform_preprocessing(P_train, datasets, P_val=None):
     F = []
     idx = 0
     for i,(_,Y) in enumerate(datasets):
-        P = P_train if i<2 else P_val
         X = X_full[idx:idx+Y.shape[0]]
         idx+=Y.shape[0]
 
-        if P.get('sample_no') is not None:
-            if isinstance(P.get('sample_no'),tuple): no = P.get('sample_no')[i]
-            else: no = P.get('sample_no')
-            samples = {k:no for k in P.get('labels')}
-            X,Y = over_sampling(P, X, Y, samples)
-            X,Y = under_sampling(P, X, Y)
-            
-        elif P.get('undersampling'):
-            X, Y = under_sampling(P, X, Y)
-            
-        elif P.get('oversampling'):
-            X, Y = over_sampling(P, X, Y)
+        # No Under/Oversampling for unlabelled data
+        if i!=1:
+            P = P_train if i<2 else P_val
+            if P.get('sample_no'):
+                if isinstance(P.get('sample_no'),tuple): no = P.get('sample_no')[i]
+                else: no = P.get('sample_no')
+                samples = {k:no for k in P.get('labels')}
+                X,Y = over_sampling(X, Y, samples)
+                X,Y = under_sampling(X, Y, samples)
+                
+            elif P.get('undersampling'):
+                X, Y = under_sampling(X, Y)
+                
+            elif P.get('oversampling'):
+                X, Y = over_sampling(X, Y)
             
         F.append([X,Y])
     return F
