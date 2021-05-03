@@ -681,6 +681,9 @@ def main():
     parser.add_argument('-data_path', type=str, dest='data_path')
     parser.set_defaults(data_path=default['data_path'])
     
+    parser.add_argument('-dataset', type=str, dest='dataset')
+    parser.set_defaults(dataset=default['dataset'])
+    
     parser.add_argument('-print', dest='PRINT', action='store_true')
     parser.set_defaults(PRINT=default['print_epoch'])
     
@@ -697,6 +700,7 @@ def main():
         CUDA = args.CUDA,
         print_epoch = args.PRINT,
         C_basic_train = args.BASIC,
+        dataset = args.dataset,
         )
     
     P_test = P_args.copy().set_keys(
@@ -736,7 +740,6 @@ def main():
     
     P = P_args.copy().set_keys(
         name = 'eval',
-        dataset = 'SHL',
 
         epochs = 1500,
         save_step = 3,
@@ -788,6 +791,10 @@ def main():
     
     if args.EVAL:
 
+        P.set_keys(name='eval_complete',undersampling = False)
+        evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+        
+        P.set_keys(name='eval_undersampling',undersampling = True)
         evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
         
         # for cross_val in ['user','none']:
