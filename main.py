@@ -213,7 +213,7 @@ def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None,P_val=None):
             + 0.05 * np.mean((1-perf_mat_D[2])**2)   # D is rewarded for accurately classifying classifier predictions
             - perf[0]                               # C F1 score is most important
             )
-        P0.log(f"loss = {val:.5f} [Accuracy D = {np.mean(perf_mat_D):.5f} | vs G = {np.mean(perf_mat_D[0]):.5f} | vs real = {np.mean(perf_mat_D[1]):.5f}] [C - F1: {perf[0]:.5f} | Accuracy: {perf[1]:.5f}]",name='hyperopt')
+        P0.log(f"loss = {val:.5f} [Accuracy D = {np.mean(perf_mat_D):.5f} | vs G = {np.mean(perf_mat_D[0]):.5f} | vs C = {np.mean(perf_mat_D[2]):.5f} | vs real = {np.mean(perf_mat_D[1]):.5f}] [C - F1: {perf[0]:.5f} | Accuracy: {perf[1]:.5f}]",name='hyperopt')
         return val
  
     hyperopt_Search(P,param_space,obj,eval_step=eval_step,max_evals=max_evals)
@@ -552,7 +552,7 @@ def hyper_GAN_3_5(P_args):
 def hyper_R_1_3(P_args):
     P_search = P_args.copy()
     P_search.set_keys(
-        name = 'Hyper_R_1.2',
+        name = 'Hyper_R_1.3',
         dataset = 'SHL_ext',
         
         epochs = 100,
