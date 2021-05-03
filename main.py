@@ -187,24 +187,32 @@ def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None,P_val=None):
         P0.log("Check Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt') 
             
         perf_mat_C = np.empty(shape=(2,P.get('runs'),len(DL_V)))
-        perf_mat_D = np.empty(shape=(2,P.get('runs')))
+        perf_mat_D = np.empty(shape=(3,P.get('runs')))
         for run in range(P0.get('runs')):
             G, D, C, _, _ = GAN.train_GAN(P0, DL_L, DL_U_iter, DL_V, name=P0.get('name')+'_%d'%run)
             G.eval();D.eval();C.eval();
             
             with torch.no_grad():
-                acc_D = np.empty(shape=len(DL_V))
+                acc_D = np.empty(shape=(2,len(DL_V)))
                 for i,(XV, YV) in enumerate(DL_V):
-                    perf_mat_C[0,run,i] = calc_f1score(C(XV), YV)
-                    perf_mat_C[1,run,i] = calc_accuracy(C(XV), YV)
-                    acc_D[i] = calc_accuracy(D(torch.cat((XV,YV),dim=1)),floatTensor(XV.shape[0],1).fill_(1.0))
+                    YC = C(XV)
+                    perf_mat_C[0,run,i] = calc_f1score(YC, YV)
+                    perf_mat_C[1,run,i] = calc_accuracy(YC, YV)
+                    acc_D[0,i] = calc_accuracy(D(torch.cat((XV,YV),dim=1)),floatTensor(XV.shape[0],1).fill_(1.0))
+                    acc_D[1,i] = calc_accuracy(D(torch.cat((XV,YC),dim=1)),floatTensor(XV.shape[0],1).fill_(0.0))
                     
                 YV = floatTensor(pp.get_one_hot_labels(P0,num=P0.get('batch_size'))) 
                 perf_mat_D[0,run] = calc_accuracy(D(torch.cat((G(torch.cat((floatTensor(np.random.normal(0,1,(P0.get('batch_size'),P0.get('noise_shape')))),YV),dim=1)),YV),dim=1)),floatTensor(P0.get('batch_size'),1).fill_(0.0))
-                perf_mat_D[1,run] = np.mean(acc_D)
+                perf_mat_D[1,run] = np.mean(acc_D[0])
+                perf_mat_D[2,run] = np.mean(acc_D[1])
               
         perf = np.mean(perf_mat_C.reshape(2,-1),axis=1)
-        val = 0.5 * np.mean((0.5-perf_mat_D[0])**2) + 0.1 * np.mean((1-perf_mat_D[1])**2) - perf[0]
+        val = (
+            0.15 * np.mean((0.5-perf_mat_D[0])**2)   # G/D acc ideally is around 50%
+            + 0.05 * np.mean((1-perf_mat_D[1])**2)   # D is rewarded for accurately classifying real pairs
+            + 0.05 * np.mean((1-perf_mat_D[2])**2)   # D is rewarded for accurately classifying classifier predictions
+            - perf[0]                               # C F1 score is most important
+            )
         P0.log(f"loss = {val:.5f} [Accuracy D = {np.mean(perf_mat_D):.5f} | vs G = {np.mean(perf_mat_D[0]):.5f} | vs real = {np.mean(perf_mat_D[1]):.5f}] [C - F1: {perf[0]:.5f} | Accuracy: {perf[1]:.5f}]",name='hyperopt')
         return val
  
@@ -343,63 +351,69 @@ def evaluate(P,P_val=None):
     # -------------------
     #  Plot Metrics
     # -------------------
-    
-    timeline = np.arange(0,(P.get('epochs_GD')+P.get('epochs'))+1,P.get('save_step'))
-    
+
     def get_label(name,model):
         if name == "Accuracy": return "Accuracy $A_%s$"%model;
         elif name == "F1 Score": return "F1 Score $F_%s$"%model;
         else: return "NO_NAME"+model
-        
-    for name,mat in (('Accuracy',ACC),("F1 Score",F1S)):
-    
-        mean_G = np.mean(mat[0],axis=1)
-        std_G = np.std(mat[0],axis=1)
-        mean_D = np.mean(mat[1],axis=1)
-        std_D = np.std(mat[1],axis=1)
-        mean_C = np.mean(mat[2],axis=1)
-        std_C = np.std(mat[2],axis=1)
-        mean_R = np.mean(mat[3],axis=1)
 
-        plt.figure(figsize=(27,9),dpi=300,clear=True)
-        fig, ax = plt.subplots()    
-         
-        cmap = plt.get_cmap('gnuplot')
-        indices = np.linspace(0, cmap.N, 7)
-        colors = [cmap(int(i)) for i in indices]
+    for eval_mode in ['full','GAN']:
+        
+        if eval_mode == 'GAN':
+            ACC = ACC[:,P.get('epochs_GD'):]
+            F1S = F1S[:,P.get('epochs_GD'):]
+
+        timeline = np.arange(0,ACC.shape[1],P.get('save_step'))
+        
+        for name,mat in (('Accuracy',ACC),("F1 Score",F1S)):
+        
+            mean_G = np.mean(mat[0],axis=1)
+            std_G = np.std(mat[0],axis=1)
+            mean_D = np.mean(mat[1],axis=1)
+            std_D = np.std(mat[1],axis=1)
+            mean_C = np.mean(mat[2],axis=1)
+            std_C = np.std(mat[2],axis=1)
+            mean_R = np.mean(mat[3],axis=1)
     
-        ax.plot(timeline,mean_C,c=colors[0],linestyle='solid',label=get_label(name,'C'))
-        ax.fill_between(timeline, mean_C-std_C, mean_C+std_C, alpha=0.3, facecolor=colors[0])
+            plt.figure(figsize=(27,9),dpi=300,clear=True)
+            fig, ax = plt.subplots()    
+             
+            cmap = plt.get_cmap('gnuplot')
+            indices = np.linspace(0, cmap.N, 7)
+            colors = [cmap(int(i)) for i in indices]
         
-        ax.plot(timeline,mean_D,c=colors[1],linestyle='dashed',label=get_label(name,'D'))
-        ax.fill_between(timeline, mean_D-std_D, mean_D+std_D, alpha=0.3, facecolor=colors[1])
-        
-        ax.plot(timeline,mean_G,c=colors[2],linestyle='dotted',label=get_label(name,'G'))
-        ax.fill_between(timeline, mean_G-std_G, mean_G+std_G, alpha=0.3, facecolor=colors[2])
-        
-        Y_max = 1.15
-        ax.plot(timeline,mean_R,c=colors[3],linestyle='dashdot',label=get_label(name,'R'))
-        
-        # perf = np.zeros_like(mean_C)
-        # perf[0] = 0.0
-        # perf[1:] = (mean_C[1:]-mean_R[1:])/mean_R[1:]
-    
-        # ax.plot(timeline,perf+1,c=colors[4],linestyle='solid')
-        # legend.append("Performance $P_C$")
-        
-        ax.set_xlim(0.0,(P.get('epochs_GD')+P.get('epochs')))
-        ax.set_ylim(0.0,Y_max)
-        
-        # ax.legend(legend,fontsize=20)
-        # ax.set_xlabel('Epoch',fontsize=20)
-        # ax.set_ylabel('Accuracy',fontsize=20)
-        
-        ax.legend()
-        ax.set_xlabel('Epoch')
-        ax.set_ylabel(name)
+            ax.plot(timeline,mean_C,c=colors[0],linestyle='solid',label=get_label(name,'C'))
+            ax.fill_between(timeline, mean_C-std_C, mean_C+std_C, alpha=0.3, facecolor=colors[0])
             
-        ax.grid()
-        save_fig(P,'eval_'+('acc' if name == 'Accuracy' else 'f1'),fig)
+            ax.plot(timeline,mean_D,c=colors[1],linestyle='dashed',label=get_label(name,'D'))
+            ax.fill_between(timeline, mean_D-std_D, mean_D+std_D, alpha=0.3, facecolor=colors[1])
+            
+            ax.plot(timeline,mean_G,c=colors[2],linestyle='dotted',label=get_label(name,'G'))
+            ax.fill_between(timeline, mean_G-std_G, mean_G+std_G, alpha=0.3, facecolor=colors[2])
+            
+            Y_max = 1.15
+            ax.plot(timeline,mean_R,c=colors[3],linestyle='dashdot',label=get_label(name,'R'))
+            
+            # perf = np.zeros_like(mean_C)
+            # perf[0] = 0.0
+            # perf[1:] = (mean_C[1:]-mean_R[1:])/mean_R[1:]
+        
+            # ax.plot(timeline,perf+1,c=colors[4],linestyle='solid')
+            # legend.append("Performance $P_C$")
+            
+            ax.set_xlim(0.0,timeline.shape[0]-1)
+            ax.set_ylim(0.0,Y_max)
+            
+            # ax.legend(legend,fontsize=20)
+            # ax.set_xlabel('Epoch',fontsize=20)
+            # ax.set_ylabel('Accuracy',fontsize=20)
+            
+            ax.legend()
+            ax.set_xlabel('Epoch')
+            ax.set_ylabel(name)
+                
+            ax.grid()
+            save_fig(P,f'eval_{eval_mode}_'+('acc' if name == 'Accuracy' else 'f1'),fig)
   
     YF = pp.one_hot_to_labels(P,YF)
     RF = pp.one_hot_to_labels(P,RF)
@@ -473,13 +487,13 @@ def mrmr(K=908,log=True,down_to=183,dataset='SHL'):
 #  Hyperopt GAN Search
 # -------------------
 
-def hyper_GAN_3_4(P_args):
+def hyper_GAN_3_5(P_args):
     P_search = P_args.copy()
     P_search.set_keys(
-        name = 'Hyper_GAN_3.4',
+        name = 'Hyper_GAN_3.5',
         dataset = 'SHL_ext',
         
-        epochs = 20,
+        epochs = 100,
         runs = 5,
         
         batch_size = 512,
@@ -565,7 +579,7 @@ def hyper_R_1_3(P_args):
         'R_ac_func'       : hp.choice('R_ac_func',['relu','leaky','leaky20','sig']),
         'R_hidden'        : scope.int(hp.qloguniform('R_hidden', np.log(16), np.log(4096), q=1)),
         'R_hidden_no'     : scope.int(hp.quniform('R_hidden_no', 1, 8, q=1)), 
-        'R_optim'         : hp.choice('R_optim',['Adam','AdamW','SGD']),
+        'R_optim'         : hp.choice('R_optim',['AdamW','SGD']),
     } 
     
     hyperopt_GAN(P_search,param_space,eval_step=5,max_evals=None,P_val=P_search.copy().set_keys(
@@ -689,8 +703,9 @@ def main():
         name = 'Test',
         dataset = 'Test',
 
-        epochs = 5,
-        epochs_GD = 5,
+        epochs = 10,
+        GD_ratio = 0.5,
+
         save_step = 1,
         runs = 1,
         
@@ -742,26 +757,7 @@ def main():
         batch_size = 512,
         FX_num = 150, 
         
-        CB1 = 0.001508163984430861, 
-        CLR = 0.0039035726898435474, 
-        C_ac_func = 'sig', 
-        C_hidden = 59, 
-        C_hidden_no = 2, 
-        C_optim = 'AdamW', 
-        C_tau = 1.7941581965351747, 
-        
-        DB1 = 0.43490552730544446, 
-        DLR = 2.648853861448327e-05, 
-        D_ac_func = 'leaky', 
-        D_hidden = 566, 
-        D_hidden_no = 6, 
-        GB1 = 0.037877789517951274, 
-        
-        GD_ratio = 0.10961612373959789, 
-        GLR = 6.299545862277024e-05, 
-        G_ac_func = 'leaky', 
-        G_hidden = 3340, 
-        G_hidden_no = 1,
+        CB1 = 0.004427087732173232, CLR = 5.418501755960968e-05, C_ac_func = 'leaky20', C_hidden = 1583, C_hidden_no = 5, C_optim = 'AdamW', C_tau = 2.24425587227301, DB1 = 0.03657478636804344, DLR = 5.756345813924097e-05, D_ac_func = 'leaky20', D_hidden = 21, D_hidden_no = 3, GB1 = 0.38149329922250885, GD_ratio = 0.05790546108243109, GLR = 1.224740836154311e-05, G_ac_func = 'relu', G_hidden = 78, G_hidden_no = 2,
 
         
         RB1 = 0.011464688009852337, 
@@ -780,12 +776,15 @@ def main():
         clear_cache()
 
     if args.TEST:
-        P_test.set_keys(CUDA = True,)
+        param_space={'GD_ratio': hp.uniform('GD_ratio', 0, 0.9)} 
+        
+        P_test.set_keys(name='Test_CUDA',CUDA = True,)
         evaluate(P_test)
-        hyperopt_GAN(P_test,eval_step=2,max_evals=5)
-        P_test.set_keys(CUDA = False,)
+        hyperopt_GAN(P_test.copy(),param_space,eval_step=2,max_evals=5)
+        
+        P_test.set_keys(name='Test_CPU',CUDA = False,)
         evaluate(P_test)
-        hyperopt_GAN(P_test,eval_step=2,max_evals=5)
+        hyperopt_GAN(P_test.copy(),param_space,eval_step=2,max_evals=5)
     
     if args.EVAL:
 
@@ -825,7 +824,7 @@ def main():
         plt_FX_num(P_fx_num,max_n=args.FX_NUM,P_val=P_fx_num.copy().set_keys(sample_no=None, undersampling=False, oversampling=False,),indeces=indeces)
 
     if args.SEARCH:
-        hyper_GAN_3_4(P_args)
+        hyper_GAN_3_5(P_args)
     
     if args.SEARCH_C:
         hyper_R_1_3(P_args)

@@ -139,7 +139,8 @@ DEFAULT_PARAMS = {
         
         'epochs'          : 500,                        # Number of regular training epochs
         'epochs_GD'       : 0,                          # Number of G/D training epochs
-        'GD_ratio'        : None,                       # If given, divides epochs into epochs and epochs_GD
+        'epochs_GAN'      : 0,                          # Number of GAN training epochs
+        'GD_ratio'        : 0.0,                        # If given, divides epochs into epochs_GD and epochs_GAN
         'save_step'       : 10,                         # Number of epochs after which results are stored
         'batch_size'      : 512,                        # Number of samples per batch
         'noise_shape'     : 100,                        # Size of random noise Z
@@ -191,19 +192,19 @@ DEFAULT_PARAMS = {
 class Params:
     def __init__(self, P=None, **kwargs):
         if P is None:
+            self.params = DEFAULT_PARAMS
             given = locals()['kwargs']
             saved = load_params(given.get('name','missingNo'))
             
             if saved is None:
                 saved = DEFAULT_PARAMS
-                
-            self.params = {}
+
             for key in DEFAULT_PARAMS:
                 val = given.get(key,None)
                 if val is None:
                     val = saved.get(key,None)
                     if val is None:
-                        val = DEFAULT_PARAMS.get(key,None)
+                        continue
                 self.set(key,val)
             if self.get('labels') is None:
                 self.set('labels',ds.get_labels())
@@ -264,12 +265,18 @@ class Params:
     def set(self,key,val):
         assert key in DEFAULT_PARAMS.keys()
         self.params[key] = val
+        
         if key=='channels': self.update_channels()
-        if key=='FX_num' and val is not None: self.set('FX_indeces',get_best_n_features(val))
-        if key=='GD_ratio' and val is not None: 
-            epochs = self.get('epochs')
-            self.set('epochs_GD',int(round(val*epochs)))
-            self.set('epochs',epochs-self.get('epochs_GD'))
+        elif key=='FX_num' and val is not None: self.set('FX_indeces',get_best_n_features(val))
+        elif key in ['GD_ratio','epochs'] and val is not None:
+            epochs_GD = int(round(self.get('GD_ratio')*self.get('epochs')))
+            epochs_GAN = self.get('epochs')-self.get('epochs_GD')
+            self.params['epochs_GD'] = epochs_GD
+            self.params['epochs_GAN'] = epochs_GAN
+        elif key=='epochs_GD' and val is not None:
+            self.set('GD_ratio',((self.get('epochs_GD'))/self.get('epochs')))
+        elif key=='epochs_GAN' and val is not None:
+            self.set('GD_ratio',(1-(self.get('epochs_GAN'))/self.get('epochs')))
         return self
     
     def set_keys(self,**kwargs):
