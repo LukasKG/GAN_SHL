@@ -743,7 +743,7 @@ def main():
 
         epochs = 1500,
         save_step = 3,
-        runs = 5,
+        runs = 3,
         
         FX_sel = 'all',
         
