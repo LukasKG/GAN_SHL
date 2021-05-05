@@ -749,7 +749,7 @@ def main():
         
         cross_val = 'combined',
         
-        sample_no = None,
+        sample_no = 11136,
         undersampling = False,
         oversampling = False,
         

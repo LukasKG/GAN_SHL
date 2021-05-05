@@ -41,7 +41,7 @@ def train_Base(P, DL_L, DL_V, name=None):
                 mat1, mat2 = [], []
                 for XV, YV in DL_V:
                     mat1.append(calc_accuracy(R(XV), YV))
-                    mat2.append(calc_f1score(R(XV), YV))
+                    mat2.append(calc_f1score(R(XV), YV, average = 'macro'))
                 mat_accuracy[0,idx] = np.mean(mat1)
                 mat_f1_score[0,idx] = np.mean(mat2)
     return R, mat_accuracy, mat_f1_score
@@ -441,12 +441,12 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
                                         
                     C_acc[i] = calc_accuracy(PV, YV)
                     
-                    D_f1[0,i] = calc_f1score(AV1,RV1, average = 'micro')
-                    D_f1[1,i] = calc_f1score(AV2,FV2, average = 'micro')
-                    D_f1[2,i] = calc_f1score(AV3,FV3, average = 'micro')
+                    D_f1[0,i] = calc_f1score(AV1,RV1)
+                    D_f1[1,i] = calc_f1score(AV2,FV2)
+                    D_f1[2,i] = calc_f1score(AV3,FV3)
 
-                    C_f1[i] = calc_f1score(PV, YV, average = 'micro')
-                    G_f1[i] = calc_f1score(AV3,RV3, average = 'micro')
+                    C_f1[i] = calc_f1score(PV, YV, average = 'macro')
+                    G_f1[i] = calc_f1score(AV3,RV3)
 
                     
             D_acc = np.mean(D_acc,axis=1)    
