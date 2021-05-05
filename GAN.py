@@ -441,12 +441,12 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
                                         
                     C_acc[i] = calc_accuracy(PV, YV)
                     
-                    D_f1[0,i] = calc_f1score(AV1,RV1)
-                    D_f1[1,i] = calc_f1score(AV2,FV2)
-                    D_f1[2,i] = calc_f1score(AV3,FV3)
+                    D_f1[0,i] = calc_f1score(AV1,RV1, average = 'micro')
+                    D_f1[1,i] = calc_f1score(AV2,FV2, average = 'micro')
+                    D_f1[2,i] = calc_f1score(AV3,FV3, average = 'micro')
 
-                    C_f1[i] = calc_f1score(PV, YV)
-                    G_f1[i] = calc_f1score(AV3,RV3)
+                    C_f1[i] = calc_f1score(PV, YV, average = 'micro')
+                    G_f1[i] = calc_f1score(AV3,RV3, average = 'micro')
 
                     
             D_acc = np.mean(D_acc,axis=1)    

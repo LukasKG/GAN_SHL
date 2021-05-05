@@ -196,7 +196,7 @@ def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None,P_val=None):
                 acc_D = np.empty(shape=(2,len(DL_V)))
                 for i,(XV, YV) in enumerate(DL_V):
                     YC = C(XV)
-                    perf_mat_C[0,run,i] = calc_f1score(YC, YV)
+                    perf_mat_C[0,run,i] = calc_f1score(YC, YV, average = 'weighted')
                     perf_mat_C[1,run,i] = calc_accuracy(YC, YV)
                     acc_D[0,i] = calc_accuracy(D(torch.cat((XV,YV),dim=1)),floatTensor(XV.shape[0],1).fill_(1.0))
                     acc_D[1,i] = calc_accuracy(D(torch.cat((XV,YC),dim=1)),floatTensor(XV.shape[0],1).fill_(0.0))
@@ -240,7 +240,7 @@ def hyperopt_R(P,param_space,eval_step=5,max_evals=None,P_val=None):
             C.eval()
             with torch.no_grad():
                 for i,(XV, YV) in enumerate(DL_V):
-                    perf_mat[0,run,i] = calc_f1score(C(XV), YV)
+                    perf_mat[0,run,i] = calc_f1score(C(XV), YV, average = 'weighted')
                     perf_mat[1,run,i] = calc_accuracy(C(XV), YV)
               
         perf = np.mean(perf_mat.reshape(2,-1),axis=1)

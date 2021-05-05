@@ -8,7 +8,7 @@ def calc_accuracy(predictions: torch.Tensor, labels: torch.Tensor) -> float:
     else:
         return (predictions.max(dim=1)[1] == labels.max(dim=1)[1]).sum().item() / labels.size(0)
 
-def calc_f1score(predictions: torch.Tensor, labels: torch.Tensor, average: str = 'weighted') -> float:
+def calc_f1score(predictions: torch.Tensor, labels: torch.Tensor, average: str = 'micro') -> float:
     """
     Calculate f1 score based on averaging method defined.
 
