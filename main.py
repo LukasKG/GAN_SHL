@@ -760,15 +760,33 @@ def main():
         batch_size = 512,
         FX_num = 150, 
         
-        CB1 = 0.004427087732173232, CLR = 5.418501755960968e-05, C_ac_func = 'leaky20', C_hidden = 1583, C_hidden_no = 5, C_optim = 'AdamW', C_tau = 2.24425587227301, DB1 = 0.03657478636804344, DLR = 5.756345813924097e-05, D_ac_func = 'leaky20', D_hidden = 21, D_hidden_no = 3, GB1 = 0.38149329922250885, GD_ratio = 0.05790546108243109, GLR = 1.224740836154311e-05, G_ac_func = 'relu', G_hidden = 78, G_hidden_no = 2,
-
+        CB1 = 0.9887383105852293, 
+        CLR = 0.0001342599423601006, 
+        C_ac_func = 'relu', 
+        C_hidden = 3292, 
+        C_hidden_no = 1, 
+        C_optim = 'AdamW', 
+        C_tau = 4.743449849495011, 
         
-        RB1 = 0.011464688009852337, 
-        RLR = 0.014508298446114655, 
-        R_ac_func = 'leaky20', 
-        R_hidden = 81, 
+        DB1 = 0.5260600567601219, 
+        DLR = 0.0013644502099743017, 
+        D_ac_func = 'relu', 
+        D_hidden = 223, 
+        D_hidden_no = 6, 
+        
+        GB1 = 0.2895160693656408, 
+        GD_ratio = 0.11084522108208536, 
+        GLR = 6.244015248398016e-05, 
+        G_ac_func = 'relu', 
+        G_hidden = 2435, 
+        G_hidden_no = 6,
+        
+        RB1 = 0.0202574056023114, 
+        RLR = 0.0024569186376477503, 
+        R_ac_func = 'sig', 
+        R_hidden = 893, 
         R_hidden_no = 4, 
-        R_optim = 'Adam',
+        R_optim = 'SGD',
  
 
 
