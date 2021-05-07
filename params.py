@@ -18,6 +18,17 @@ def make_dir_pre():os.makedirs(S_PATH, exist_ok=True)
 def make_dir_tre():os.makedirs(T_PATH, exist_ok=True)
 def make_dir_hyp():os.makedirs(H_PATH, exist_ok=True)
 
+
+def save_file(file,path):
+    with open(path, 'wb') as f:
+        pickle.dump(file, f, pickle.HIGHEST_PROTOCOL)
+
+def load_file(path):
+    if not os.path.isfile(path):
+        return None
+    with open(path, 'rb') as f:
+        return pickle.load(f)
+
 # -------------------
 #  Images
 # -------------------
@@ -67,17 +78,12 @@ def save_trials(P,trials,name=None):
     if name is None:
         name = P.get('name')
     PATH = H_PATH+name+'.p'
-    pickle.dump(trials, open(PATH, "wb"))
+    save_file(file=trials,path=PATH)
     
 def load_trials(P,name=None):
     if name is None:
-        name = P.get('name')
-    PATH = H_PATH+name+'.p'
-    
-    if not os.path.isfile(PATH):
-        return None
-    
-    return pickle.load(open(PATH, "rb"))
+        name = P.get('name')  
+    return load_file(H_PATH+name+'.p')
      
 # -------------------
 #  Parameters
@@ -97,7 +103,6 @@ else:
     from . import data_source as ds
     from .log import log as writeLog
     from .sliding_window import get_FX_list, get_FX_list_len, get_best_n_features
-
 
 
 DEFAULT_PARAMS = {
@@ -256,8 +261,7 @@ class Params:
     def save(self):
         make_dir_mod()
         PATH = M_PATH + self.params['name'] + '_params.pkl'
-        with open(PATH, 'wb') as f:
-            pickle.dump(self.params, f, pickle.HIGHEST_PROTOCOL)
+        save_file(file=self.params,path=PATH)
             
     def get(self, key):
         return self.params.get(key,None)
@@ -300,12 +304,7 @@ class Params:
         return str(self.params)
     
 def load_params(name):
-    PATH = M_PATH + name + '_params.pkl'
-    if not os.path.isfile(PATH):
-        return None
-    with open(PATH, 'rb') as f:
-        return pickle.load(f)
-
+    return load_file(M_PATH + name + '_params.pkl')
     
 if __name__ == "__main__":
     channels = 'all'

@@ -3,15 +3,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import os
-import numpy as np
 import warnings
 
 if __package__ is None or __package__ == '':
     # uses current directory visibility
-    from params import M_PATH, make_dir_mod
+    from params import M_PATH, make_dir_mod, save_file, load_file
 else:
     # uses current package visibility
-    from .params import M_PATH, make_dir_mod
+    from .params import M_PATH, make_dir_mod, save_file, load_file
 
 def hardmax(logits):
     y = F.softmax(logits, dim=-1)
@@ -261,83 +260,18 @@ def clear_cache():
         torch.cuda.empty_cache()
 
 # -------------------
-#  Save/Load Distribution Differences
+#  Save/Load Metrics
 # -------------------
 
-def save_G_Diff(P,mat):
+def save_results(P,mat,name='acc'):
     make_dir_mod()
-    PATH = M_PATH+P.get('name')+'_diff_G.pt'
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        torch.save({'diff_G':mat}, PATH)
-        
-def load_G_Diff(P):
-    PATH = M_PATH+P.get('name')+'_diff_G.pt'
-    mat = np.zeros((P.get('runs'),int(P.get('epochs')/P.get('save_step'))+1,len(P.get('label'))))
-    
-    if not os.path.isfile(PATH):
-        P.log("Could not find G differences for model \"%s\""%P.get('name'))
-    else:
-        diff = torch.load(PATH)
-        mat = fit_array(mat,diff['diff_G'])
-        P.log("Loaded G differences for model \"%s\""%P.get('name'))
-    return mat
+    PATH = M_PATH + P.get('name') + '_' + name + '.pkl'
+    save_file(mat,PATH)
 
-# -------------------
-#  Save/Load Accuracy
-# -------------------
-
-def save_R_Acc(P,mat_R):
-    make_dir_mod()
-    PATH = M_PATH+P.get('name')+'_acc_R.pt'
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        torch.save({'mat_R':mat_R}, PATH)
-#    log("Saved accuracies of model "+name)
-    
-def load_R_Acc(P):
-    PATH = M_PATH+P.get('name')+'_acc_R.pt'
-    mat_R = np.zeros((P.get('runs'),int(P.get('epochs')/P.get('save_step'))+1))
-    #mat_R[:,0] = 1.0/pp.get_size(P)[1]
-    mat_R[:,0] = 0.0
-    
-    if not os.path.isfile(PATH):
-        P.log("Could not find accuracies for model \"%s\""%P.get('name'))
-    else:
-        acc = torch.load(PATH)
-        mat_R = fit_array(mat_R,acc['mat_R'])
-        P.log("Loaded accuracies for model \"%s\""%P.get('name'))
-    return mat_R
-
-def save_Acc(P,mat_G,mat_D,mat_C):
-    make_dir_mod()
-    PATH = M_PATH+P.get('name')+'_acc.pt'
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        torch.save({'mat_G':mat_G,'mat_D':mat_D,'mat_C':mat_C}, PATH)
-#    log("Saved accuracies of model "+name)
-    
-def load_Acc(P):
-    PATH = M_PATH+P.get('name')+'_acc.pt'
-    mat_G = np.zeros((P.get('runs'),int(P.get('epochs')/P.get('save_step'))+1))
-    #mat_G[:,0] = 0.5
-    mat_G[:,0] = 0.0
-    mat_D = np.zeros((P.get('runs'),int(P.get('epochs')/P.get('save_step'))+1))
-    #mat_D[:,0] = 0.5
-    mat_D[:,0] = 0.0
-    mat_C = np.zeros((P.get('runs'),int(P.get('epochs')/P.get('save_step'))+1))
-    #mat_C[:,0] = 1.0/pp.get_size(P)[1]
-    mat_C[:,0] = 0.0
-
-    if not os.path.isfile(PATH):
-        P.log("Could not find accuracies for model \"%s\""%P.get('name'))
-    else:
-        acc = torch.load(PATH)
-        mat_G = fit_array(mat_G,acc['mat_G'])
-        mat_D = fit_array(mat_D,acc['mat_D'])
-        mat_C = fit_array(mat_C,acc['mat_C'])
-        P.log("Loaded accuracies for model \"%s\""%P.get('name'))
-    return mat_G, mat_D, mat_C
+def load_results(P,name='acc'):
+    PATH = M_PATH + P.get('name') + '_' + name + '.pkl'
+    return load_file(PATH)
+   
 
 def fit_array(target,source):
     ''' Fit the content of array 'source' into array 'target' '''

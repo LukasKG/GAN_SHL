@@ -19,7 +19,7 @@ if __package__ is None or __package__ == '':
     import data_source as ds
     import GAN
     from metrics import calc_accuracy, calc_f1score
-    from network import clear_cache
+    from network import clear_cache, save_results, load_results
     from sklearn_functions import sklearn_baseline, plt_FX_num
     from params import Params, save_fig, save_trials, load_trials
     from plot_confusion_matrix import plot_confusion_matrix
@@ -28,7 +28,7 @@ else:
     from . import data_source as ds
     from . import GAN
     from .metrics import calc_accuracy, calc_f1score
-    from .network import clear_cache
+    from .network import clear_cache, save_results, load_results
     from .params import Params, save_fig, save_trials, load_trials
     from .plot_confusion_matrix import plot_confusion_matrix
     from . import preprocessing as pp
@@ -286,61 +286,79 @@ def hyperopt_GD(P,param_space,eval_step=5,max_evals=None,P_val=None):
 def get_Results(P,P_val=None):
     P.log("Params: "+str(P))
     
-    if P.get('CUDA') and torch.cuda.is_available():
-        P.log("CUDA Training.")
-    else:
-        P.log("CPU Training.")
+    ACC = load_results(P,name='acc')
+    F1S = load_results(P,name='f1')
+    YF = load_results(P,name='YF')
+    RF = load_results(P,name='RF')
+    PF = load_results(P,name='PF')
     
-    DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, ds.get_data(P), P_val)
-    P.log(f"Number of batches: Labelled = {len(DL_L)} | Unlabelled = {len(DL_U_iter)} | Validation = {len(DL_V)}")
+    if any(mat is None for mat in (ACC,F1S,YF,PF)):
     
-    ACC = None
-    F1S = None
-    YF = None
-    RF = None
-    PF = None
-    
-    # -------------------
-    #  Individual runs
-    # -------------------
-    
-    for run in range(P.get('runs')):
-    
-        G, D, C, mat_accuracy, mat_f1_score = GAN.train_GAN(P, DL_L, DL_U_iter, DL_V, name=P.get('name')+'_%d'%run)
-        
-        if P.get('R_active'):
-            R, acc_BASE, f1_BASE = GAN.train_Base(P, DL_L, DL_V, name=P.get('name')+'_%d'%run)
-            mat_accuracy = np.concatenate((mat_accuracy,acc_BASE))
-            mat_f1_score = np.concatenate((mat_f1_score,f1_BASE))
-        if ACC is None:
-            ACC = np.expand_dims(mat_accuracy,axis=2)
-            F1S = np.expand_dims(mat_f1_score,axis=2)
+        if P.get('CUDA') and torch.cuda.is_available():
+            P.log("CUDA Training.")
         else:
-            ACC = np.concatenate((ACC, np.expand_dims(mat_accuracy,axis=2)),axis=2)
-            F1S = np.concatenate((F1S, np.expand_dims(mat_accuracy,axis=2)),axis=2)
+            P.log("CPU Training.")
+        
+        DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, ds.get_data(P), P_val)
+        P.log(f"Number of batches: Labelled = {len(DL_L)} | Unlabelled = {len(DL_U_iter)} | Validation = {len(DL_V)}")    
+    
+        ACC = None
+        F1S = None
+        YF = None
+        RF = None
+        PF = None
+        
+        # -------------------
+        #  Individual runs
+        # -------------------
+        
+        for run in range(P.get('runs')):
+        
+            G, D, C, mat_accuracy, mat_f1_score = GAN.train_GAN(P, DL_L, DL_U_iter, DL_V, name=P.get('name')+'_%d'%run)
             
-        C.eval()
-        if P.get('R_active'):
-            R.eval()
-            
-        with torch.no_grad():
-            for XV, YV in DL_V:
+            if P.get('R_active'):
+                R, acc_BASE, f1_BASE = GAN.train_Base(P, DL_L, DL_V, name=P.get('name')+'_%d'%run)
+                mat_accuracy = np.concatenate((mat_accuracy,acc_BASE))
+                mat_f1_score = np.concatenate((mat_f1_score,f1_BASE))
+            if ACC is None:
+                ACC = np.expand_dims(mat_accuracy,axis=2)
+                F1S = np.expand_dims(mat_f1_score,axis=2)
+            else:
+                ACC = np.concatenate((ACC, np.expand_dims(mat_accuracy,axis=2)),axis=2)
+                F1S = np.concatenate((F1S, np.expand_dims(mat_accuracy,axis=2)),axis=2)
                 
-                # Classify Validation data
-                PC = C(XV)
+            C.eval()
+            if P.get('R_active'):
+                R.eval()
                 
-                if YF == None:
-                    YF = YV
-                    PF = PC
-                else:
-                    YF = torch.cat((YF, YV), 0)
-                    PF = torch.cat((PF, PC), 0)
+            with torch.no_grad():
+                for XV, YV in DL_V:
                     
-                if P.get('R_active'):
-                    if RF == None:
-                        RF = R(XV)
+                    # Classify Validation data
+                    PC = C(XV)
+                    
+                    if YF == None:
+                        YF = YV
+                        PF = PC
                     else:
-                        RF = torch.cat((RF, R(XV).detach()), 0)
+                        YF = torch.cat((YF, YV), 0)
+                        PF = torch.cat((PF, PC), 0)
+                        
+                    if P.get('R_active'):
+                        if RF == None:
+                            RF = R(XV)
+                        else:
+                            RF = torch.cat((RF, R(XV).detach()), 0)
+        
+        save_results(P, ACC, name='acc')
+        save_results(P, F1S, name='f1')
+        save_results(P,YF,name='YF')
+        save_results(P,PF,name='PF')
+        if RF is not None:
+            save_results(P, RF, name='RF')
+        P.log("Saved Accuracy, F1 Score and predictions.")
+    else:
+        P.log("Loaded Accuracy, F1 Score and predictions.")
         
     return ACC, F1S, (YF, RF, PF)
 
@@ -363,7 +381,7 @@ def evaluate(P,P_val=None):
             ACC = ACC[:,P.get('epochs_GD'):]
             F1S = F1S[:,P.get('epochs_GD'):]
 
-        timeline = np.arange(0,ACC.shape[1],P.get('save_step'))
+        timeline = np.arange(0,ACC.shape[1]*P.get('save_step'),P.get('save_step'))
         
         for name,mat in (('Accuracy',ACC),("F1 Score",F1S)):
         
@@ -679,6 +697,7 @@ def main():
     parser.set_defaults(CUDA=default['CUDA'])
     
     parser.add_argument('-data_path', type=str, dest='data_path')
+    parser.add_argument('-datapath', type=str, dest='data_path')
     parser.set_defaults(data_path=default['data_path'])
     
     parser.add_argument('-dataset', type=str, dest='dataset')
@@ -760,26 +779,26 @@ def main():
         batch_size = 512,
         FX_num = 150, 
         
-        CB1 = 0.9887383105852293, 
-        CLR = 0.0001342599423601006, 
+        CB1 = 0.9575294338712442, 
+        CLR = 0.00019648736861945274, 
         C_ac_func = 'relu', 
-        C_hidden = 3292, 
-        C_hidden_no = 1, 
+        C_hidden = 3663, 
+        C_hidden_no = 2, 
         C_optim = 'AdamW', 
-        C_tau = 4.743449849495011, 
+        C_tau = 7.81219653857222, 
         
-        DB1 = 0.5260600567601219, 
-        DLR = 0.0013644502099743017, 
+        DB1 = 0.040659167249518575, 
+        DLR = 0.007276690625627446, 
         D_ac_func = 'relu', 
-        D_hidden = 223, 
-        D_hidden_no = 6, 
+        D_hidden = 392, 
+        D_hidden_no = 7, 
         
-        GB1 = 0.2895160693656408, 
-        GD_ratio = 0.11084522108208536, 
-        GLR = 6.244015248398016e-05, 
+        GB1 = 0.7121429015539442, 
+        GD_ratio = 0.15667317600612712, 
+        GLR = 0.00010176168444138969, 
         G_ac_func = 'relu', 
-        G_hidden = 2435, 
-        G_hidden_no = 6,
+        G_hidden = 2360, 
+        G_hidden_no = 4,
         
         RB1 = 0.0202574056023114, 
         RLR = 0.0024569186376477503, 
@@ -787,8 +806,6 @@ def main():
         R_hidden = 893, 
         R_hidden_no = 4, 
         R_optim = 'SGD',
- 
-
 
         ) 
     
@@ -809,10 +826,10 @@ def main():
     
     if args.EVAL:
 
-        P.set_keys(name='eval_complete',undersampling = False)
+        P.set_keys(name='eval_complete', sample_no = None, undersampling = False, oversampling = False, )
         evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
         
-        P.set_keys(name='eval_undersampling',undersampling = True)
+        P.set_keys(name='eval_undersampling', sample_no = 11136, undersampling = False, oversampling = False, )
         evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
         
         # for cross_val in ['user','none']:
