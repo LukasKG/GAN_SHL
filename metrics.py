@@ -30,4 +30,4 @@ def calc_f1score(predictions: torch.Tensor, labels: torch.Tensor, average: str =
     else:
         y_true = torch.reshape(labels, (-1,)).detach().cpu().numpy()
     
-    return f1_score(y_true, y_pred, average=average)
+    return f1_score(y_true, y_pred, average=average, zero_division=0)
