@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from numpy.matlib import repmat
 import os
+from sklearn.model_selection import StratifiedShuffleSplit
 
 if __package__ is None or __package__ == '':
     from sliding_window import slidingWindow
@@ -327,12 +328,18 @@ def get_data(P):
         XL, YL = F[0]
         XU = np.concatenate([X for X,_ in F[1:]])
         YU = np.concatenate([Y for _,Y in F[1:]])
-        return [[XL,YL], [XU,YU], [XU,YU]] 
+        return [[XL,YL], [XU,YU], [XU,YU]]
         
     if P.get('cross_val') == 'none':
         X = np.concatenate([X for X,_ in F])
         Y = np.concatenate([Y for _,Y in F])
-        return [[X,Y], [X,Y], [X,Y]]    
+        return [[X,Y], [X,Y], [X,Y]]
+    
+    if P.get('cross_val') == 'user1':
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=0.5)
+        X, Y = F[0]
+        train_index, test_index = next(sss.split(X, Y))
+        return [[X[train_index], Y[train_index]], [X[test_index], Y[test_index]], [X[test_index], Y[test_index]]]
 
 def select_features(F_base,indeces):
     if indeces is None:

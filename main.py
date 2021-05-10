@@ -666,6 +666,9 @@ def main():
     parser.add_argument('-test', dest='TEST', action='store_true')
     parser.set_defaults(TEST=False)
     
+    parser.add_argument('-run', dest='RUN', action='store_true')
+    parser.set_defaults(RUN=False)
+    
     parser.add_argument('-eval', dest='EVAL', action='store_true')
     parser.set_defaults(EVAL=False)
     
@@ -758,7 +761,7 @@ def main():
         ) 
     
     P = P_args.copy().set_keys(
-        name = 'eval',
+        name = 'eval_user1',
 
         epochs = 1500,
         save_step = 3,
@@ -766,10 +769,10 @@ def main():
         
         FX_sel = 'all',
         
-        cross_val = 'combined',
+        cross_val = 'user1',
         
-        sample_no = 11136,
-        undersampling = False,
+        sample_no = None,
+        undersampling = True,
         oversampling = False,
         
         User_L = 1,
@@ -779,31 +782,31 @@ def main():
         batch_size = 512,
         FX_num = 150, 
         
-        CB1 = 0.9575294338712442, 
-        CLR = 0.00019648736861945274, 
-        C_ac_func = 'relu', 
-        C_hidden = 3663, 
+        CB1 = 0.8661148142428583, 
+        CLR = 8.299645247840653e-05, 
+        C_ac_func = 'leaky20', 
+        C_hidden = 1790, 
         C_hidden_no = 2, 
         C_optim = 'AdamW', 
-        C_tau = 7.81219653857222, 
+        C_tau = 2.833757972503762, 
         
-        DB1 = 0.040659167249518575, 
-        DLR = 0.007276690625627446, 
-        D_ac_func = 'relu', 
-        D_hidden = 392, 
-        D_hidden_no = 7, 
+        DB1 = 0.04397295845368007, 
+        DLR = 0.0243252689035249, 
+        D_ac_func = 'leaky', 
+        D_hidden = 113, 
+        D_hidden_no = 6, 
         
-        GB1 = 0.7121429015539442, 
-        GD_ratio = 0.15667317600612712, 
-        GLR = 0.00010176168444138969, 
+        GB1 = 0.6201555853224091, 
+        GD_ratio = 0.3140071822393487, 
+        GLR = 0.006959406242448824, 
         G_ac_func = 'relu', 
-        G_hidden = 2360, 
-        G_hidden_no = 4,
+        G_hidden = 318, 
+        G_hidden_no = 5,
         
-        RB1 = 0.0202574056023114, 
-        RLR = 0.0024569186376477503, 
-        R_ac_func = 'sig', 
-        R_hidden = 893, 
+        RB1 = 0.02621587421913803, 
+        RLR = 0.03451171211996072, 
+        R_ac_func = 'leaky20', 
+        R_hidden = 1294, 
         R_hidden_no = 4, 
         R_optim = 'SGD',
 
@@ -824,12 +827,15 @@ def main():
         evaluate(P_test)
         hyperopt_GAN(P_test.copy(),param_space,eval_step=2,max_evals=5)
     
+    if args.RUN:
+        evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+    
     if args.EVAL:
 
-        P.set_keys(name='eval_complete', sample_no = None, undersampling = False, oversampling = False, )
+        P.set_keys(name='eval_complete', cross_val='combined', sample_no = None, undersampling = False, oversampling = False, )
         evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
         
-        P.set_keys(name='eval_undersampling', sample_no = 11136, undersampling = False, oversampling = False, )
+        P.set_keys(name='eval_undersampling', cross_val='combined', sample_no = 11136, undersampling = False, oversampling = False, )
         evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
         
         # for cross_val in ['user','none']:
