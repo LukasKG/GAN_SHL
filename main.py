@@ -432,6 +432,10 @@ def evaluate(P,P_val=None):
                 
             ax.grid()
             save_fig(P,f'eval_{eval_mode}_'+('acc' if name == 'Accuracy' else 'f1'),fig)
+            
+            if eval_mode == 'GAN':
+                P.log(f"GAN-C {name} peak: {np.max(mean_C)}")
+                P.log(f"Ref-C {name} peak: {np.max(mean_R)}")
   
     YF = pp.one_hot_to_labels(P,YF)
     RF = pp.one_hot_to_labels(P,RF)
@@ -797,7 +801,7 @@ def main():
         D_hidden_no = 6, 
         
         GB1 = 0.6201555853224091, 
-        GD_ratio = 0.3140071822393487, 
+        GD_ratio = 2/3, 
         GLR = 0.006959406242448824, 
         G_ac_func = 'relu', 
         G_hidden = 318, 
@@ -828,7 +832,26 @@ def main():
         hyperopt_GAN(P_test.copy(),param_space,eval_step=2,max_evals=5)
     
     if args.RUN:
-        evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+        P_run = P.copy()
+        
+        P_run.set_keys(
+            cross_val = 'user1', 
+            save_step=1, 
+            sample_no = None,
+            undersampling = True,
+            oversampling = False,
+            )
+        
+        P_run.set_keys(name='eval_0_GD', epochs=50, GD_ratio = 0,)
+        evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+        
+        P_run.set_keys(name='eval_50_GD', epochs=100, GD_ratio = 0.5,)
+        evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+        
+        P_run.set_keys(name='eval_100_GD', epochs=150, GD_ratio = 2/3,)
+        evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+        
+        
     
     if args.EVAL:
 
@@ -865,7 +888,11 @@ def main():
             selected, indeces = mrmr(down_to=down_to,dataset='SHL')
         
     if args.SKLEARN:
-        sklearn_baseline(P)
+        P_sklearn = P.copy().set_keys(
+            name = 'eval_sklearn',
+            runs = 10,
+            )
+        sklearn_baseline(P_sklearn)
         
     if args.FX_NUM is not None:
         P_fx_num = P.copy().set_keys( name='fx_num', dataset='SHL_ext', runs=8, sample_no=512, undersampling=False, oversampling=False, )

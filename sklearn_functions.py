@@ -2,9 +2,12 @@
 from joblib import Parallel, delayed
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.neural_network import MLPClassifier as MLP
+
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, f1_score
+from sklearn.naive_bayes import GaussianNB
+from sklearn.neural_network import MLPClassifier as MLP
+from sklearn.svm import SVC
 
 if __package__ is None or __package__ == '':
     import data_source as ds
@@ -19,7 +22,7 @@ else:
 def sklearn_baseline(P):
     P.log(P)
         
-    F = pp.perform_preprocessing(P, ds.get_data(P))
+    F = pp.perform_preprocessing(P, ds.get_data(P), P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
     
     x_train, y_train = F[0]
     x_test, y_test = F[2]
@@ -28,30 +31,99 @@ def sklearn_baseline(P):
     P.log('cross_val: '+str(P.get('cross_val')))
     P.log('   FX_num: '+str(P.get('FX_num')))
     
-    ''' Multi-layer Perceptron '''
-    mlp = MLP(hidden_layer_sizes=(100,100),max_iter=500)
-    mlp.fit(x_train, y_train)
-
-    y_pred = mlp.predict(x_train) 
-    P.log(f"MLP Acc Train: {accuracy_score(y_train,y_pred):.2f}")
-    P.log(f"MLP  F1 Train: {f1_score(y_train,y_pred,average='weighted'):.2f}")
     
-    y_pred = mlp.predict(x_test)
-    P.log(f"MLP Acc  Test: {accuracy_score(y_test,y_pred):.2f}")
-    P.log(f"MLP  F1  Test: {f1_score(y_test,y_pred,average='weighted'):.2f}")
-    P.log(F"MLP Iterations = {mlp.n_iter_}")
+    ''' Multi-layer Perceptron '''
+    res = np.empty(shape=(P.get('runs'),5))
+    for run in range(P.get('runs')):
+        clf = MLP(hidden_layer_sizes=(100,100),max_iter=500)
+        clf.fit(x_train, y_train)
+
+        y_pred = clf.predict(x_train) 
+        res[run,0] = accuracy_score(y_train,y_pred)
+        res[run,1] = f1_score(y_train,y_pred,average='macro')
+        
+        y_pred = clf.predict(x_test)
+        res[run,2] = accuracy_score(y_test,y_pred)
+        res[run,3] = f1_score(y_test,y_pred,average='macro')
+        res[run,4] = clf.n_iter_
+        
+    res = np.mean(res,axis=0)
+        
+    P.log(f"MLP Acc Train: {res[0]:.2f}")
+    P.log(f"MLP  F1 Train: {res[1]:.2f}")
+
+    P.log(f"MLP Acc  Test: {res[2]:.2f}")
+    P.log(f"MLP  F1  Test: {res[3]:.2f}")
+    P.log(F"MLP Iterations = {res[4]}")
+    
     
     ''' Random Forest Classifier '''
-    rfc = RandomForestClassifier()
-    rfc.fit(x_train, y_train)
+    res = np.empty(shape=(P.get('runs'),4))
+    for run in range(P.get('runs')):
+        clf = RandomForestClassifier()
+        clf.fit(x_train, y_train)
+
+        y_pred = clf.predict(x_train) 
+        res[run,0] = accuracy_score(y_train,y_pred)
+        res[run,1] = f1_score(y_train,y_pred,average='macro')
+        
+        y_pred = clf.predict(x_test)
+        res[run,2] = accuracy_score(y_test,y_pred)
+        res[run,3] = f1_score(y_test,y_pred,average='macro')
+        
+    res = np.mean(res,axis=0)
+        
+    P.log(f"RFC Acc Train: {res[0]:.2f}")
+    P.log(f"RFC  F1 Train: {res[1]:.2f}")
+
+    P.log(f"RFC Acc  Test: {res[2]:.2f}")
+    P.log(f"RFC  F1  Test: {res[3]:.2f}")
+
     
-    y_pred = rfc.predict(x_train)
-    P.log(f"RFC Acc Train: {accuracy_score(y_train,y_pred):.2f}")
-    P.log(f"RFC  F1 Train: {f1_score(y_train,y_pred,average='weighted'):.2f}")
+    ''' Gaussian Naive Bayes '''
+    res = np.empty(shape=(P.get('runs'),4))
+    for run in range(P.get('runs')):
+        clf = GaussianNB()
+        clf.fit(x_train, y_train)
+
+        y_pred = clf.predict(x_train) 
+        res[run,0] = accuracy_score(y_train,y_pred)
+        res[run,1] = f1_score(y_train,y_pred,average='macro')
+        
+        y_pred = clf.predict(x_test)
+        res[run,2] = accuracy_score(y_test,y_pred)
+        res[run,3] = f1_score(y_test,y_pred,average='macro')
+        
+    res = np.mean(res,axis=0)
+        
+    P.log(f"GNB Acc Train: {res[0]:.2f}")
+    P.log(f"GNB  F1 Train: {res[1]:.2f}")
+
+    P.log(f"GNB Acc  Test: {res[2]:.2f}")
+    P.log(f"GNB  F1  Test: {res[3]:.2f}")
     
-    y_pred = rfc.predict(x_test)
-    P.log(f"RFC Acc  Test: {accuracy_score(y_test,y_pred):.2f}")
-    P.log(f"RFC  F1  Test: {f1_score(y_test,y_pred,average='weighted'):.2f}")
+    
+    ''' Support Vector Classification '''
+    res = np.empty(shape=(P.get('runs'),4))
+    for run in range(P.get('runs')):
+        clf = SVC()
+        clf.fit(x_train, y_train)
+
+        y_pred = clf.predict(x_train) 
+        res[run,0] = accuracy_score(y_train,y_pred)
+        res[run,1] = f1_score(y_train,y_pred,average='macro')
+        
+        y_pred = clf.predict(x_test)
+        res[run,2] = accuracy_score(y_test,y_pred)
+        res[run,3] = f1_score(y_test,y_pred,average='macro')
+        
+    res = np.mean(res,axis=0)
+        
+    P.log(f"SVC Acc Train: {res[0]:.2f}")
+    P.log(f"SVC  F1 Train: {res[1]:.2f}")
+
+    P.log(f"SVC Acc  Test: {res[2]:.2f}")
+    P.log(f"SVC  F1  Test: {res[3]:.2f}")
 
 
 def plt_FX_num(P,max_n=908,P_val=None,indeces=None):
