@@ -329,18 +329,21 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             # -------------------
             #  Train the discriminator to label fake positive samples
             # -------------------
-            X4 = DL_U_iter.get_next()[0]
-            Y4 = C(X4)
-            W4 = torch.cat((X4,Y4),dim=1)
             
-            optimizer_D.zero_grad()
-            A4 = D(W4.detach())
-            R4 = floatTensor(W4.shape[0], 1).fill_(1.0)
-            loss = D_Loss(A4, R4)
-            loss.backward()
-            optimizer_D.step()
-            if P.get('print_epoch'):
-                loss_D.append(loss)
+            if P.get('D_fake_step') is not None and (epoch+1)%P.get('D_fake_step')==0:
+                print(epoch+1)
+                X4 = DL_U_iter.get_next()[0]
+                Y4 = C(X4)
+                W4 = torch.cat((X4,Y4),dim=1)
+                
+                optimizer_D.zero_grad()
+                A4 = D(W4.detach())
+                R4 = floatTensor(W4.shape[0], 1).fill_(1.0)
+                loss = D_Loss(A4, R4)
+                loss.backward()
+                optimizer_D.step()
+                if P.get('print_epoch'):
+                    loss_D.append(loss)
             
             # -------------------
             #  Create Synthetic Data

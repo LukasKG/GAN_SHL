@@ -154,6 +154,7 @@ DEFAULT_PARAMS = {
         'G_label_factor'  : 1,                          # Size factor of the input for G in relation to current batch
         'C_basic_train'   : True,                       # True: The classifier is trained on real data | False: the classifier is only trained against the discriminator
         'R_active'        : True,                       # True: a reference classifier is used as baseline
+        'D_fake_step'     : 1,                          # Every n epochs fake positive training will be performed on the discriminator
         
         'CLR'             : 0.003,                      # Classifier: Learning rate
         'CB1'             : 0.9,                        # Classifier: Decay rate for first moment estimates

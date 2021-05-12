@@ -449,21 +449,19 @@ def evaluate(P,P_val=None):
         plot_confusion_matrix(con_mat,P,name=name+'_normalised',title='Confusion matrix',fmt='0.3f')
 
    
-def mrmr(K=908,log=True,down_to=183,dataset='SHL'):
+def mrmr(K=908,log=True,dataset='SHL_ext'):
     import pandas as pd
     from sklearn.feature_selection import f_regression
-    from preprocessing import under_sampling
     
     from sliding_window import get_FX_names
    
-    P = Params(name='mRMR_reduced_user1',dataset=dataset,FX_sel='all',cross_val='user',log_name='mrmr')
+    P = Params(name='mRMR_full_user1',dataset=dataset,FX_sel='all',cross_val='combined',undersampling=True)
     V = ds.load_data(P)
+    F = pp.perform_preprocessing(P, V)
     
-    samples = {k:down_to for k in P.get('labels')}
-    F = [under_sampling(X0, Y0, samples) for X0, Y0 in V]
-    
-    X = np.concatenate([X0 for X0,_ in F])
-    Y = np.concatenate([Y0 for _,Y0 in F])
+    # X = np.concatenate([X0 for X0,_ in F])
+    # Y = np.concatenate([Y0 for _,Y0 in F])
+    X, Y = F[0]
    
     P.log(f"X: {X.shape}, Y: {Y.shape}")
     P.log(', '.join([ f"{int(val)}: {count}" for val,count in zip(*np.unique(Y,return_counts=True))]))
@@ -786,6 +784,13 @@ def main():
         batch_size = 512,
         FX_num = 150, 
         
+        RB1 = 0.02621587421913803, 
+        RLR = 0.03451171211996072, 
+        R_ac_func = 'leaky20', 
+        R_hidden = 1294, 
+        R_hidden_no = 4, 
+        R_optim = 'SGD',
+        
         CB1 = 0.8661148142428583, 
         CLR = 8.299645247840653e-05, 
         C_ac_func = 'leaky20', 
@@ -807,13 +812,6 @@ def main():
         G_hidden = 318, 
         G_hidden_no = 5,
         
-        RB1 = 0.02621587421913803, 
-        RLR = 0.03451171211996072, 
-        R_ac_func = 'leaky20', 
-        R_hidden = 1294, 
-        R_hidden_no = 4, 
-        R_optim = 'SGD',
-
         ) 
     
 
@@ -823,33 +821,95 @@ def main():
     if args.TEST:
         param_space={'GD_ratio': hp.uniform('GD_ratio', 0, 0.9)} 
         
-        P_test.set_keys(name='Test_CUDA',CUDA = True,)
+        P_test.set_keys(name='Test_CUDA', CUDA = True,)
         evaluate(P_test)
         hyperopt_GAN(P_test.copy(),param_space,eval_step=2,max_evals=5)
         
-        P_test.set_keys(name='Test_CPU',CUDA = False,)
+        P_test.set_keys(name='Test_CPU', CUDA = False, D_fake_step=2)
         evaluate(P_test)
         hyperopt_GAN(P_test.copy(),param_space,eval_step=2,max_evals=5)
-    
+        
     if args.RUN:
         P_run = P.copy()
         
         P_run.set_keys(
             cross_val = 'user1', 
-            save_step=1, 
+            save_step = 1, 
+            epochs = 150, 
+            GD_ratio = 0,
+            runs = 10,
             sample_no = None,
             undersampling = True,
             oversampling = False,
             )
         
-        P_run.set_keys(name='eval_0_GD', epochs=50, GD_ratio = 0,)
-        evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+        for step_size in [None,1,2]:
         
-        P_run.set_keys(name='eval_50_GD', epochs=100, GD_ratio = 0.5,)
-        evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+            P_run.set_keys(
+                name='eval_C_LR_'+str(step_size),
+                D_fake_step = step_size,
+                
+                RB1 = 0.8661148142428583,
+                RLR = 8.299645247840653e-05,
+                R_ac_func = 'leaky20',
+                R_hidden = 1790,
+                R_hidden_no = 2,
+                R_optim = 'AdamW',
+                
+                CB1 = 0.8661148142428583,
+                CLR = 8.299645247840653e-05,
+                C_ac_func = 'leaky20',
+                C_hidden = 1790,
+                C_hidden_no = 2,
+                C_optim = 'AdamW',)
+            evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+            
+            P_run.set_keys(
+                name='eval_C_norm_'+str(step_size),
+                D_fake_step = step_size,
+                
+                RB1 = 0.9,
+                RLR = 0.01,
+                R_ac_func = 'leaky20',
+                R_hidden = 1790,
+                R_hidden_no = 2,
+                R_optim = 'AdamW',
+                
+                CB1 = 0.9,
+                CLR = 0.01,
+                C_ac_func = 'leaky20',
+                C_hidden = 1790,
+                C_hidden_no = 2,
+                C_optim = 'AdamW',)
+            evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
         
-        P_run.set_keys(name='eval_100_GD', epochs=150, GD_ratio = 2/3,)
-        evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+        # P_run.set_keys(
+        #     name='eval_R',
+        #     RB1 = 0.02621587421913803, 
+        #     RLR = 0.03451171211996072, 
+        #     R_ac_func = 'leaky20', 
+        #     R_hidden = 1294, 
+        #     R_hidden_no = 4, 
+        #     R_optim = 'SGD',
+            
+        #     CB1 = 0.02621587421913803, 
+        #     CLR = 0.03451171211996072, 
+        #     C_ac_func = 'leaky20', 
+        #     C_hidden = 1294, 
+        #     C_hidden_no = 4, 
+        #     C_optim = 'SGD',)
+        # evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+        
+        
+        
+        # P_run.set_keys(name='eval_0_GD', epochs=50, GD_ratio = 0,)
+        # evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+        
+        # P_run.set_keys(name='eval_50_GD', epochs=100, GD_ratio = 0.5,)
+        # evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+        
+        # P_run.set_keys(name='eval_100_GD', epochs=150, GD_ratio = 2/3,)
+        # evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
         
         
     
@@ -880,12 +940,7 @@ def main():
 
     indeces = None
     if args.MRMR:
-        down_to = 183
-        try: 
-            selected, indeces = mrmr(down_to=down_to,dataset='SHL_ext')
-        except Exception as e:
-            print(e)
-            selected, indeces = mrmr(down_to=down_to,dataset='SHL')
+        selected, indeces = mrmr(dataset='SHL_ext')
         
     if args.SKLEARN:
         P_sklearn = P.copy().set_keys(
