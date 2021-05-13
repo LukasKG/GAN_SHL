@@ -819,7 +819,7 @@ def main():
         clear_cache()
 
     if args.TEST:
-        param_space={'GD_ratio': hp.uniform('GD_ratio', 0, 0.9)} 
+        param_space={'GD_ratio': hp.uniform('GD_ratio', 0, 0.9)}
         
         P_test.set_keys(name='Test_CUDA', CUDA = True,)
         evaluate(P_test)
@@ -843,10 +843,10 @@ def main():
             oversampling = False,
             )
         
-        for step_size in [None,1,2]:
+        for step_size in [1,2,5,None]:
         
             P_run.set_keys(
-                name='eval_C_LR_'+str(step_size),
+                name='eval_LR_C_'+str(step_size),
                 D_fake_step = step_size,
                 
                 RB1 = 0.8661148142428583,
@@ -865,18 +865,18 @@ def main():
             evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
             
             P_run.set_keys(
-                name='eval_C_norm_'+str(step_size),
+                name='eval_LR_R_'+str(step_size),
                 D_fake_step = step_size,
                 
-                RB1 = 0.9,
-                RLR = 0.01,
+                RB1 = 0.02621587421913803,
+                RLR = 0.03451171211996072,
                 R_ac_func = 'leaky20',
                 R_hidden = 1790,
                 R_hidden_no = 2,
                 R_optim = 'AdamW',
                 
-                CB1 = 0.9,
-                CLR = 0.01,
+                CB1 = 0.02621587421913803,
+                CLR = 0.03451171211996072,
                 C_ac_func = 'leaky20',
                 C_hidden = 1790,
                 C_hidden_no = 2,

@@ -331,7 +331,6 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             # -------------------
             
             if P.get('D_fake_step') is not None and (epoch+1)%P.get('D_fake_step')==0:
-                print(epoch+1)
                 X4 = DL_U_iter.get_next()[0]
                 Y4 = C(X4)
                 W4 = torch.cat((X4,Y4),dim=1)
