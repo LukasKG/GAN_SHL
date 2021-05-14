@@ -405,7 +405,7 @@ def train_GAN(P, DL_L, DL_U_iter, DL_V, name=None):
             D_acc = np.zeros((3,len(DL_V)))
             C_acc = np.zeros(len(DL_V))
 
-            D_f1 = np.zeros((3,len(DL_V))) 
+            D_f1 = np.zeros((3,len(DL_V)))
             C_f1 = np.zeros((len(DL_V)))
             G_f1 = np.zeros((len(DL_V)))
 

@@ -362,10 +362,16 @@ def get_Results(P,P_val=None):
         
     return ACC, F1S, (YF, RF, PF)
 
-def evaluate(P,P_val=None):
-    P.set('R_active',True)
+def evaluate(P,P_val=None,epoch_lst=None,Y_max = 1.05):
+    #P.set('R_active',True)
     ACC, F1S, (YF, RF, PF) = get_Results(P,P_val)
-
+    
+    if epoch_lst is None:
+        epoch_lst = [P.get('epochs')]
+    else:
+        epoch_lst += [P.get('epochs')]
+        epoch_lst = set(epoch_lst)
+    
     # -------------------
     #  Plot Metrics
     # -------------------
@@ -375,7 +381,8 @@ def evaluate(P,P_val=None):
         elif name == "F1 Score": return "F1 Score $F_%s$"%model;
         else: return "NO_NAME"+model
 
-    for eval_mode in ['full','GAN']:
+
+    for eval_mode in ['full','GAN'] if P.get('epochs_GD')>0 else ['full']:
         
         if eval_mode == 'GAN':
             ACC = ACC[:,P.get('epochs_GD'):]
@@ -391,7 +398,6 @@ def evaluate(P,P_val=None):
             std_D = np.std(mat[1],axis=1)
             mean_C = np.mean(mat[2],axis=1)
             std_C = np.std(mat[2],axis=1)
-            mean_R = np.mean(mat[3],axis=1)
     
             plt.figure(figsize=(27,9),dpi=300,clear=True)
             fig, ax = plt.subplots()    
@@ -409,8 +415,9 @@ def evaluate(P,P_val=None):
             ax.plot(timeline,mean_G,c=colors[2],linestyle='dotted',label=get_label(name,'G'))
             ax.fill_between(timeline, mean_G-std_G, mean_G+std_G, alpha=0.3, facecolor=colors[2])
             
-            Y_max = 1.15
-            ax.plot(timeline,mean_R,c=colors[3],linestyle='dashdot',label=get_label(name,'R'))
+            if P.get('R_active'):
+                mean_R = np.mean(mat[3],axis=1)
+                ax.plot(timeline,mean_R,c=colors[3],linestyle='dashdot',label=get_label(name,'R'))
             
             # perf = np.zeros_like(mean_C)
             # perf[0] = 0.0
@@ -419,8 +426,8 @@ def evaluate(P,P_val=None):
             # ax.plot(timeline,perf+1,c=colors[4],linestyle='solid')
             # legend.append("Performance $P_C$")
             
-            ax.set_xlim(0.0,timeline.shape[0]-1)
             ax.set_ylim(0.0,Y_max)
+            #ax.set_xlim(0.0,timeline.shape[0]-1)
             
             # ax.legend(legend,fontsize=20)
             # ax.set_xlabel('Epoch',fontsize=20)
@@ -429,19 +436,24 @@ def evaluate(P,P_val=None):
             ax.legend()
             ax.set_xlabel('Epoch')
             ax.set_ylabel(name)
-                
             ax.grid()
-            save_fig(P,f'eval_{eval_mode}_'+('acc' if name == 'Accuracy' else 'f1'),fig)
             
-            if eval_mode == 'GAN':
+            for epochs in epoch_lst:
+                ax.set_xlim(0.0,epochs)
+                save_fig(P,f'eval_{eval_mode}_'+('acc' if name == 'Accuracy' else 'f1')+'_epochs_'+str(epochs),fig)
+            plt.close(fig)
+            
+            if eval_mode == 'full':
                 P.log(f"GAN-C {name} peak: {np.max(mean_C)}")
-                P.log(f"Ref-C {name} peak: {np.max(mean_R)}")
+                if P.get('R_active'):
+                    P.log(f"Ref-C {name} peak: {np.max(mean_R)}")
   
     YF = pp.one_hot_to_labels(P,YF)
-    RF = pp.one_hot_to_labels(P,RF)
     PF = pp.one_hot_to_labels(P,PF)
-
-    for Y, name in [(PF,'C'),(RF,'R')]:
+    if P.get('R_active'):
+        RF = pp.one_hot_to_labels(P,RF)
+        
+    for Y, name in [(PF,'C'),(RF,'R')] if P.get('R_active') else [(PF,'C')]:
         con_mat = confusion_matrix(YF, Y, labels=None, sample_weight=None, normalize=None)
         plot_confusion_matrix(np.divide(con_mat,P.get('runs')).round().astype(int),P,name=name,title='Confusion matrix',fmt='d')
         
@@ -765,16 +777,16 @@ def main():
     P = P_args.copy().set_keys(
         name = 'eval_user1',
 
-        epochs = 1500,
-        save_step = 3,
-        runs = 3,
+        epochs = 300,
+        save_step = 1,
+        runs = 10,
         
         FX_sel = 'all',
-        
+        R_active = False,
         cross_val = 'user1',
         
         sample_no = None,
-        undersampling = True,
+        undersampling = False,
         oversampling = False,
         
         User_L = 1,
@@ -783,6 +795,8 @@ def main():
         
         batch_size = 512,
         FX_num = 150, 
+        
+        GD_ratio = 0,
         
         RB1 = 0.02621587421913803, 
         RLR = 0.03451171211996072, 
@@ -806,7 +820,6 @@ def main():
         D_hidden_no = 6, 
         
         GB1 = 0.6201555853224091, 
-        GD_ratio = 2/3, 
         GLR = 0.006959406242448824, 
         G_ac_func = 'relu', 
         G_hidden = 318, 
@@ -862,26 +875,26 @@ def main():
                 C_hidden = 1790,
                 C_hidden_no = 2,
                 C_optim = 'AdamW',)
-            evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+            evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ),epoch_lst=[50,100])
             
-            P_run.set_keys(
-                name='eval_LR_R_'+str(step_size),
-                D_fake_step = step_size,
+            # P_run.set_keys(
+            #     name='eval_LR_R_'+str(step_size),
+            #     D_fake_step = step_size,
                 
-                RB1 = 0.02621587421913803,
-                RLR = 0.03451171211996072,
-                R_ac_func = 'leaky20',
-                R_hidden = 1790,
-                R_hidden_no = 2,
-                R_optim = 'AdamW',
+            #     RB1 = 0.02621587421913803,
+            #     RLR = 0.03451171211996072,
+            #     R_ac_func = 'leaky20',
+            #     R_hidden = 1790,
+            #     R_hidden_no = 2,
+            #     R_optim = 'AdamW',
                 
-                CB1 = 0.02621587421913803,
-                CLR = 0.03451171211996072,
-                C_ac_func = 'leaky20',
-                C_hidden = 1790,
-                C_hidden_no = 2,
-                C_optim = 'AdamW',)
-            evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+            #     CB1 = 0.02621587421913803,
+            #     CLR = 0.03451171211996072,
+            #     C_ac_func = 'leaky20',
+            #     C_hidden = 1790,
+            #     C_hidden_no = 2,
+            #     C_optim = 'AdamW',)
+            # evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
         
         # P_run.set_keys(
         #     name='eval_R',
@@ -913,13 +926,15 @@ def main():
         
         
     
-    if args.EVAL:
+    if args.EVAL:     
 
-        P.set_keys(name='eval_complete', cross_val='combined', sample_no = None, undersampling = False, oversampling = False, )
-        evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
-        
-        P.set_keys(name='eval_undersampling', cross_val='combined', sample_no = 11136, undersampling = False, oversampling = False, )
-        evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+        for sample_no in [512,1024,4096,11136]:        
+
+            P.set_keys(name='eval_combined_'+str(sample_no), cross_val='combined', sample_no = sample_no, undersampling = False, oversampling = False, )
+            evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ),epoch_lst = [50,100,150,200,250])
+            
+            P.set_keys(name='eval_user1_'+str(sample_no), cross_val='combined', sample_no = sample_no, undersampling = False, oversampling = False, )
+            evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ),epoch_lst = [50,100,150,200,250])
         
         # for cross_val in ['user','none']:
         #     for basic_train in [True,False]:
