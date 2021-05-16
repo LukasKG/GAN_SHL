@@ -169,8 +169,18 @@ def run_cross_val(P,V=None):
 
 
 if __name__ == "__main__":
+    import argparse
+    from params import DEFAULT_PARAMS as default
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-data_path', type=str, dest='data_path')
+    parser.add_argument('-datapath', type=str, dest='data_path')
+    parser.set_defaults(data_path=default['data_path'])
+    args = parser.parse_args()
+    
     P = Params(
         name = 'eval_cross_eval_user1_bs',
+        data_path = args.data_path,
 
         epochs = 300,
         save_step = 1,
