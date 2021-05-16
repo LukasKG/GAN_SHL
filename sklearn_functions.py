@@ -19,42 +19,42 @@ else:
     from . import preprocessing as pp
 
 
-def sklearn_baseline(P):
+def sklearn_baseline(P,V=None):
     P.log(P)
         
-    F = pp.perform_preprocessing(P, ds.get_data(P), P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+    F = pp.perform_preprocessing(P, ds.get_data(P,V), P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
     
     x_train, y_train = F[0]
     x_test, y_test = F[2]
     y_train, y_test = y_train.ravel(), y_test.ravel()
     
-    P.log('cross_val: '+str(P.get('cross_val')))
-    P.log('   FX_num: '+str(P.get('FX_num')))
+    # P.log('cross_val: '+str(P.get('cross_val')))
+    # P.log('   FX_num: '+str(P.get('FX_num')))
     
     
-    ''' Multi-layer Perceptron '''
-    res = np.empty(shape=(P.get('runs'),5))
-    for run in range(P.get('runs')):
-        clf = MLP(hidden_layer_sizes=(100,100),max_iter=500)
-        clf.fit(x_train, y_train)
+    # ''' Multi-layer Perceptron '''
+    # res = np.empty(shape=(P.get('runs'),5))
+    # for run in range(P.get('runs')):
+    #     clf = MLP(hidden_layer_sizes=(100,100),max_iter=500)
+    #     clf.fit(x_train, y_train)
 
-        y_pred = clf.predict(x_train) 
-        res[run,0] = accuracy_score(y_train,y_pred)
-        res[run,1] = f1_score(y_train,y_pred,average='macro')
+    #     y_pred = clf.predict(x_train) 
+    #     res[run,0] = accuracy_score(y_train,y_pred)
+    #     res[run,1] = f1_score(y_train,y_pred,average='macro')
         
-        y_pred = clf.predict(x_test)
-        res[run,2] = accuracy_score(y_test,y_pred)
-        res[run,3] = f1_score(y_test,y_pred,average='macro')
-        res[run,4] = clf.n_iter_
+    #     y_pred = clf.predict(x_test)
+    #     res[run,2] = accuracy_score(y_test,y_pred)
+    #     res[run,3] = f1_score(y_test,y_pred,average='macro')
+    #     res[run,4] = clf.n_iter_
         
-    res = np.mean(res,axis=0)
+    # res = np.mean(res,axis=0)
         
-    P.log(f"MLP Acc Train: {res[0]:.2f}")
-    P.log(f"MLP  F1 Train: {res[1]:.2f}")
+    # P.log(f"MLP Acc Train: {res[0]:.2f}")
+    # P.log(f"MLP  F1 Train: {res[1]:.2f}")
 
-    P.log(f"MLP Acc  Test: {res[2]:.2f}")
-    P.log(f"MLP  F1  Test: {res[3]:.2f}")
-    P.log(F"MLP Iterations = {res[4]}")
+    # P.log(f"MLP Acc  Test: {res[2]:.2f}")
+    # P.log(f"MLP  F1  Test: {res[3]:.2f}")
+    # P.log(F"MLP Iterations = {res[4]}")
     
     
     ''' Random Forest Classifier '''
@@ -72,12 +72,14 @@ def sklearn_baseline(P):
         res[run,3] = f1_score(y_test,y_pred,average='macro')
         
     res = np.mean(res,axis=0)
-        
-    P.log(f"RFC Acc Train: {res[0]:.2f}")
-    P.log(f"RFC  F1 Train: {res[1]:.2f}")
-
-    P.log(f"RFC Acc  Test: {res[2]:.2f}")
-    P.log(f"RFC  F1  Test: {res[3]:.2f}")
+       
+    P.log("")
+    P.log(f"RFC Acc Train: {res[0]:.5f}")
+    P.log(f"RFC  F1 Train: {res[1]:.5f}")
+    
+    P.log("")
+    P.log(f"RFC Acc  Test: {res[2]:.5f}")
+    P.log(f"RFC  F1  Test: {res[3]:.5f}")
 
     
     ''' Gaussian Naive Bayes '''
@@ -95,35 +97,37 @@ def sklearn_baseline(P):
         res[run,3] = f1_score(y_test,y_pred,average='macro')
         
     res = np.mean(res,axis=0)
-        
-    P.log(f"GNB Acc Train: {res[0]:.2f}")
-    P.log(f"GNB  F1 Train: {res[1]:.2f}")
-
-    P.log(f"GNB Acc  Test: {res[2]:.2f}")
-    P.log(f"GNB  F1  Test: {res[3]:.2f}")
+    
+    P.log("")
+    P.log(f"GNB Acc Train: {res[0]:.5f}")
+    P.log(f"GNB  F1 Train: {res[1]:.5f}")
+    
+    P.log("")
+    P.log(f"GNB Acc  Test: {res[2]:.5f}")
+    P.log(f"GNB  F1  Test: {res[3]:.5f}")
     
     
-    ''' Support Vector Classification '''
-    res = np.empty(shape=(P.get('runs'),4))
-    for run in range(P.get('runs')):
-        clf = SVC()
-        clf.fit(x_train, y_train)
+    # ''' Support Vector Classification '''
+    # res = np.empty(shape=(P.get('runs'),4))
+    # for run in range(P.get('runs')):
+    #     clf = SVC()
+    #     clf.fit(x_train, y_train)
 
-        y_pred = clf.predict(x_train) 
-        res[run,0] = accuracy_score(y_train,y_pred)
-        res[run,1] = f1_score(y_train,y_pred,average='macro')
+    #     y_pred = clf.predict(x_train) 
+    #     res[run,0] = accuracy_score(y_train,y_pred)
+    #     res[run,1] = f1_score(y_train,y_pred,average='macro')
         
-        y_pred = clf.predict(x_test)
-        res[run,2] = accuracy_score(y_test,y_pred)
-        res[run,3] = f1_score(y_test,y_pred,average='macro')
+    #     y_pred = clf.predict(x_test)
+    #     res[run,2] = accuracy_score(y_test,y_pred)
+    #     res[run,3] = f1_score(y_test,y_pred,average='macro')
         
-    res = np.mean(res,axis=0)
+    # res = np.mean(res,axis=0)
         
-    P.log(f"SVC Acc Train: {res[0]:.2f}")
-    P.log(f"SVC  F1 Train: {res[1]:.2f}")
+    # P.log(f"SVC Acc Train: {res[0]:.2f}")
+    # P.log(f"SVC  F1 Train: {res[1]:.2f}")
 
-    P.log(f"SVC Acc  Test: {res[2]:.2f}")
-    P.log(f"SVC  F1  Test: {res[3]:.2f}")
+    # P.log(f"SVC Acc  Test: {res[2]:.2f}")
+    # P.log(f"SVC  F1  Test: {res[3]:.2f}")
 
 
 def plt_FX_num(P,max_n=908,P_val=None,indeces=None):

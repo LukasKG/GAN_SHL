@@ -312,8 +312,8 @@ def load_data(P):
     
     return F
     
-def get_data(P):
-    F = load_data(P)
+def get_data(P,V=None):
+    F = load_data(P) if V is None else V
     
     # Select features
     if P.get('FX_indeces') is not None:

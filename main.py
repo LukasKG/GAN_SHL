@@ -283,7 +283,7 @@ def hyperopt_GD(P,param_space,eval_step=5,max_evals=None,P_val=None):
     hyperopt_Search(P,param_space,obj,eval_step=eval_step,max_evals=max_evals)
     
       
-def get_Results(P,P_val=None):
+def get_Results(P,P_val=None,V=None):
     P.log("Params: "+str(P))
     
     ACC = load_results(P,name='acc')
@@ -299,7 +299,7 @@ def get_Results(P,P_val=None):
         else:
             P.log("CPU Training.")
         
-        DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, ds.get_data(P), P_val)
+        DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P, ds.get_data(P,V), P_val)
         P.log(f"Number of batches: Labelled = {len(DL_L)} | Unlabelled = {len(DL_U_iter)} | Validation = {len(DL_V)}")    
     
         ACC = None
@@ -362,10 +362,12 @@ def get_Results(P,P_val=None):
         
     return ACC, F1S, (YF, RF, PF)
 
-def evaluate(P,P_val=None,epoch_lst=None,Y_max = 1.05):
+def evaluate(P,P_val=None,epoch_lst=None,Y_max = 1.05,V=None):
     #P.set('R_active',True)
-    ACC, F1S, (YF, RF, PF) = get_Results(P,P_val)
-    
+    ACC, F1S, (YF, RF, PF) = get_Results(P,P_val,V)
+    plot_evaluation(P, ACC, F1S, YF, PF, RF, epoch_lst, Y_max)
+
+def plot_evaluation(P,ACC, F1S, YF, PF, RF=None, epoch_lst=None, Y_max = 1.05):
     if epoch_lst is None:
         epoch_lst = [P.get('epochs')]
     else:
@@ -842,40 +844,43 @@ def main():
         evaluate(P_test)
         hyperopt_GAN(P_test.copy(),param_space,eval_step=2,max_evals=5)
         
+            
     if args.RUN:
         P_run = P.copy()
         
-        P_run.set_keys(
-            cross_val = 'user1', 
-            save_step = 1, 
-            epochs = 150, 
-            GD_ratio = 0,
-            runs = 10,
-            sample_no = None,
-            undersampling = True,
-            oversampling = False,
-            )
+        # P_run.set_keys(
+        #     cross_val = 'user1', 
+        #     save_step = 1, 
+        #     epochs = 150, 
+        #     GD_ratio = 0,
+        #     runs = 10,
+        #     sample_no = None,
+        #     undersampling = True,
+        #     oversampling = False,
+        #     )
         
-        for step_size in [1,2,5,None]:
-        
-            P_run.set_keys(
-                name='eval_LR_C_'+str(step_size),
-                D_fake_step = step_size,
+        for step_size in [5,None,10]:
+            P_run.set_keys(name='eval_user1_fpos_step_'+str(step_size), cross_val='user1', D_fake_step = step_size, sample_no = 11136, undersampling = False, oversampling = False, )
+            evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ),epoch_lst = [50,100,150,200,250])
+            
+            # P_run.set_keys(
+            #     name='eval_LR_C_'+str(step_size),
+            #     D_fake_step = step_size,
                 
-                RB1 = 0.8661148142428583,
-                RLR = 8.299645247840653e-05,
-                R_ac_func = 'leaky20',
-                R_hidden = 1790,
-                R_hidden_no = 2,
-                R_optim = 'AdamW',
+            #     RB1 = 0.8661148142428583,
+            #     RLR = 8.299645247840653e-05,
+            #     R_ac_func = 'leaky20',
+            #     R_hidden = 1790,
+            #     R_hidden_no = 2,
+            #     R_optim = 'AdamW',
                 
-                CB1 = 0.8661148142428583,
-                CLR = 8.299645247840653e-05,
-                C_ac_func = 'leaky20',
-                C_hidden = 1790,
-                C_hidden_no = 2,
-                C_optim = 'AdamW',)
-            evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ),epoch_lst=[50,100])
+            #     CB1 = 0.8661148142428583,
+            #     CLR = 8.299645247840653e-05,
+            #     C_ac_func = 'leaky20',
+            #     C_hidden = 1790,
+            #     C_hidden_no = 2,
+            #     C_optim = 'AdamW',)
+            # evaluate(P_run,P_run.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ),epoch_lst=[50,100])
             
             # P_run.set_keys(
             #     name='eval_LR_R_'+str(step_size),
@@ -926,16 +931,22 @@ def main():
         
         
     
-    if args.EVAL:     
-
-        for sample_no in [512,1024,4096,11136]:        
-
-            P.set_keys(name='eval_combined_'+str(sample_no), cross_val='combined', sample_no = sample_no, undersampling = False, oversampling = False, )
-            evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ),epoch_lst = [50,100,150,200,250])
-            
-            P.set_keys(name='eval_user1_'+str(sample_no), cross_val='combined', sample_no = sample_no, undersampling = False, oversampling = False, )
-            evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ),epoch_lst = [50,100,150,200,250])
+    if args.EVAL: 
         
+        V = ds.load_data(P)
+        
+        for sample_no in [512,1024,4096,11136]: 
+            P.set_keys(name='eval_combined_'+str(sample_no), cross_val='combined', sample_no = sample_no, undersampling = False, oversampling = False, )
+            evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ),epoch_lst = [50,100,150,200,250],V=V)
+            sklearn_baseline(P,V)
+        
+        for sample_no in [512,1024,4096,11136]:        
+            
+            P.set_keys(name='eval_user1_'+str(sample_no), cross_val='user1', sample_no = sample_no, undersampling = False, oversampling = False, )
+            evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ),epoch_lst = [50,100,150,200,250],V=V)
+            sklearn_baseline(P,V)
+
+            
         # for cross_val in ['user','none']:
         #     for basic_train in [True,False]:
         #            P.set_keys(
