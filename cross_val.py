@@ -170,7 +170,7 @@ def run_cross_val(P,V=None):
 
 if __name__ == "__main__":
     P = Params(
-        name = 'eval_cross_eval_user1',
+        name = 'eval_cross_eval_user1_bs',
 
         epochs = 300,
         save_step = 1,
@@ -179,10 +179,10 @@ if __name__ == "__main__":
         dataset = 'SHL_ext',
         
         FX_sel = 'all',
-        R_active = False,
+        R_active = True,
         cross_val = 'combined',
         
-        sample_no = None,
+        sample_no = 11136,
         undersampling = False,
         oversampling = False,
         
@@ -194,6 +194,13 @@ if __name__ == "__main__":
         FX_num = 150, 
         
         GD_ratio = 0,
+        
+        RB1 = 0.8661148142428583, 
+        RLR = 8.299645247840653e-05, 
+        R_ac_func = 'leaky20', 
+        R_hidden = 1790, 
+        R_hidden_no = 2, 
+        R_optim = 'AdamW', 
         
         CB1 = 0.8661148142428583, 
         CLR = 8.299645247840653e-05, 

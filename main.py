@@ -367,7 +367,7 @@ def evaluate(P,P_val=None,epoch_lst=None,Y_max = 1.05,V=None):
     ACC, F1S, (YF, RF, PF) = get_Results(P,P_val,V)
     plot_evaluation(P, ACC, F1S, YF, PF, RF, epoch_lst, Y_max)
 
-def plot_evaluation(P,ACC, F1S, YF, PF, RF=None, epoch_lst=None, Y_max = 1.05):
+def plot_evaluation(P, ACC, F1S, YF, PF, RF=None, epoch_lst=None, Y_max = 1.05):
     if epoch_lst is None:
         epoch_lst = [P.get('epochs')]
     else:
@@ -846,7 +846,9 @@ def main():
         
             
     if args.RUN:
-        P_run = P.copy()
+        P_run = P.copy().set_keys(
+            runs = 5,
+            )
         
         # P_run.set_keys(
         #     cross_val = 'user1', 
