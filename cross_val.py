@@ -22,7 +22,7 @@ else:
     from .params import Params
     from . import preprocessing as pp
     
-def run_cross_val(P,V=None):
+def run_cross_val(P,V=None,Base=True):
     P.log("Params: "+str(P))
     
     ACC = load_results(P,name='acc')
@@ -103,33 +103,34 @@ def run_cross_val(P,V=None):
                         else:
                             RF = torch.cat((RF, R(XV).detach()), 0)
         
-            # Baseline
-            x_train, y_train = X[test_index], Y[test_index].ravel()
-            
-            ''' Random Forest Classifier '''
-            clf = RandomForestClassifier()
-            clf.fit(x_train, y_train)
-            
-            y_pred = clf.predict(x_train) 
-            res[run,0] = accuracy_score(y_train,y_pred)
-            res[run,1] = f1_score(y_train,y_pred,average='macro')
-            
-            y_pred = clf.predict(x_test)
-            res[run,2] = accuracy_score(y_test,y_pred)
-            res[run,3] = f1_score(y_test,y_pred,average='macro')
-
-            
-            ''' Gaussian Naive Bayes '''
-            clf = GaussianNB()
-            clf.fit(x_train, y_train)
-            
-            y_pred = clf.predict(x_train) 
-            res[run,4] = accuracy_score(y_train,y_pred)
-            res[run,5] = f1_score(y_train,y_pred,average='macro')
-            
-            y_pred = clf.predict(x_test)
-            res[run,6] = accuracy_score(y_test,y_pred)
-            res[run,7] = f1_score(y_test,y_pred,average='macro')
+            if Base:
+                # Baseline
+                x_train, y_train = X[test_index], Y[test_index].ravel()
+                
+                ''' Random Forest Classifier '''
+                clf = RandomForestClassifier()
+                clf.fit(x_train, y_train)
+                
+                y_pred = clf.predict(x_train) 
+                res[run,0] = accuracy_score(y_train,y_pred)
+                res[run,1] = f1_score(y_train,y_pred,average='macro')
+                
+                y_pred = clf.predict(x_test)
+                res[run,2] = accuracy_score(y_test,y_pred)
+                res[run,3] = f1_score(y_test,y_pred,average='macro')
+    
+                
+                ''' Gaussian Naive Bayes '''
+                clf = GaussianNB()
+                clf.fit(x_train, y_train)
+                
+                y_pred = clf.predict(x_train) 
+                res[run,4] = accuracy_score(y_train,y_pred)
+                res[run,5] = f1_score(y_train,y_pred,average='macro')
+                
+                y_pred = clf.predict(x_test)
+                res[run,6] = accuracy_score(y_test,y_pred)
+                res[run,7] = f1_score(y_test,y_pred,average='macro')
             
         
         save_results(P, ACC, name='acc')
@@ -140,26 +141,26 @@ def run_cross_val(P,V=None):
             save_results(P, RF, name='RF')
         P.log("Saved Accuracy, F1 Score and predictions.")
         
-        # Baseline Evaluation
-    
-        res = np.mean(res,axis=0)
-           
-        P.log("")
-        P.log(f"RFC Acc Train: {res[0]:.5f}")
-        P.log(f"RFC  F1 Train: {res[1]:.5f}")
-        
-        P.log("")
-        P.log(f"RFC Acc  Test: {res[2]:.5f}")
-        P.log(f"RFC  F1  Test: {res[3]:.5f}")
-        
-        P.log("")
-        P.log(f"GNB Acc Train: {res[4]:.5f}")
-        P.log(f"GNB  F1 Train: {res[5]:.5f}")
-        
-        P.log("")
-        P.log(f"GNB Acc  Test: {res[6]:.5f}")
-        P.log(f"GNB  F1  Test: {res[7]:.5f}")
-        P.log("")
+        if Base:
+            # Baseline Evaluation
+            res = np.mean(res,axis=0)
+               
+            P.log("")
+            P.log(f"RFC Acc Train: {res[0]:.5f}")
+            P.log(f"RFC  F1 Train: {res[1]:.5f}")
+            
+            P.log("")
+            P.log(f"RFC Acc  Test: {res[2]:.5f}")
+            P.log(f"RFC  F1  Test: {res[3]:.5f}")
+            
+            P.log("")
+            P.log(f"GNB Acc Train: {res[4]:.5f}")
+            P.log(f"GNB  F1 Train: {res[5]:.5f}")
+            
+            P.log("")
+            P.log(f"GNB Acc  Test: {res[6]:.5f}")
+            P.log(f"GNB  F1  Test: {res[7]:.5f}")
+            P.log("")
         
     else:
         P.log("Loaded Accuracy, F1 Score and predictions.")
@@ -235,4 +236,4 @@ if __name__ == "__main__":
         ) 
 
     #V = ds.load_data(P)
-    run_cross_val(P)
+    run_cross_val(P,Base=False)

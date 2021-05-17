@@ -9,7 +9,7 @@ else:
     # uses current package visibility
     from .params import save_fig
 
-def plot_confusion_matrix(cm,P,labels=None,name='C',title='Confusion Matrix',fmt='d'):
+def plot_confusion_matrix(cm,P,labels=None,name='C',title='Confusion Matrix',fmt='d',normalized=False):
     """
     given a sklearn confusion matrix (cm), make a nice plot
 
@@ -20,9 +20,10 @@ def plot_confusion_matrix(cm,P,labels=None,name='C',title='Confusion Matrix',fmt
     fig, ax = plt.subplots()
     ax = sn.heatmap(cm, annot=True,fmt=fmt,xticklabels=labels, yticklabels=labels,cmap = sn.cubehelix_palette(len(labels))) # , fmt='.1%', vmin=0, vmax=1
     
-    #cbar = ax.collections[0].colorbar
-    #cbar.set_ticks([0, .5, 1])
-    #cbar.set_ticklabels(['0%', '50%', '100%'])
+    if normalized:
+        cbar = ax.collections[0].colorbar
+        cbar.set_ticks([0, .5, 1])
+        #cbar.set_ticklabels(['0%', '50%', '100%'])
     
     ax.set_ylabel("Actual")
     ax.set_xlabel("Predicted")

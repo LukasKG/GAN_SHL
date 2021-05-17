@@ -459,8 +459,8 @@ def plot_evaluation(P, ACC, F1S, YF, PF, RF=None, epoch_lst=None, Y_max = 1.05):
         con_mat = confusion_matrix(YF, Y, labels=None, sample_weight=None, normalize=None)
         plot_confusion_matrix(np.divide(con_mat,P.get('runs')).round().astype(int),P,name=name,title='Confusion matrix',fmt='d')
         
-        con_mat = confusion_matrix(YF, Y, labels=None, sample_weight=None, normalize='all')
-        plot_confusion_matrix(con_mat,P,name=name+'_normalised',title='Confusion matrix',fmt='0.3f')
+        con_mat = confusion_matrix(YF, Y, labels=None, sample_weight=None, normalize='true')
+        plot_confusion_matrix(con_mat,P,name=name+'_normalised',title='Confusion matrix',fmt='0.2f',normalized=True)
 
    
 def mrmr(K=908,log=True,dataset='SHL_ext'):
@@ -940,13 +940,13 @@ def main():
         for sample_no in [512,1024,4096,11136]: 
             P.set_keys(name='eval_combined_'+str(sample_no), cross_val='combined', sample_no = sample_no, undersampling = False, oversampling = False, )
             evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ),epoch_lst = [50,100,150,200,250],V=V)
-            sklearn_baseline(P,V)
+            #sklearn_baseline(P,V)
         
         for sample_no in [512,1024,4096,11136]:        
             
             P.set_keys(name='eval_user1_'+str(sample_no), cross_val='user1', sample_no = sample_no, undersampling = False, oversampling = False, )
             evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ),epoch_lst = [50,100,150,200,250],V=V)
-            sklearn_baseline(P,V)
+            #sklearn_baseline(P,V)
 
             
         # for cross_val in ['user','none']:
