@@ -18,12 +18,12 @@ def plot_confusion_matrix(cm,P,labels=None,name='C',title='Confusion Matrix',fmt
         labels = P.get('labels')
     
     fig, ax = plt.subplots()
-    ax = sn.heatmap(cm, annot=True,fmt=fmt,xticklabels=labels, yticklabels=labels,cmap = sn.cubehelix_palette(len(labels))) # , fmt='.1%', vmin=0, vmax=1
+    ax = sn.heatmap(cm, annot=True,fmt=fmt,xticklabels=labels, yticklabels=labels,cmap = sn.cubehelix_palette(len(labels)), vmin=0 if normalized else None, vmax=1 if normalized else None)
     
     if normalized:
         cbar = ax.collections[0].colorbar
         cbar.set_ticks([0, .5, 1])
-        #cbar.set_ticklabels(['0%', '50%', '100%'])
+        cbar.set_ticklabels(['0.0', '0.5', '1.0'])
     
     ax.set_ylabel("Actual")
     ax.set_xlabel("Predicted")

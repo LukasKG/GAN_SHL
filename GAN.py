@@ -76,7 +76,6 @@ def train_GD(P, DL_L, DL_V, mat_accuracy=None, mat_f1_score=None, name=None):
         
         G.train();D.train();
         for i, (X1, Y1) in enumerate(DL_L, 1):
-            
             # -------------------
             #  Train the discriminator to label real samples
             # -------------------

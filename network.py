@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from adabound import AdaBoundW
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -24,9 +25,11 @@ def hardmax(logits):
     return y_hard
 
 activation_functions = {
-    "relu" : nn.ReLU(inplace=False),
-    "leaky" : nn.LeakyReLU(0.01, inplace=False),
-    "leaky20" : nn.LeakyReLU(0.2, inplace=False),
+    'relu': nn.ReLU(inplace=False),
+    'selu': nn.SELU(inplace=False),
+    'gelu': nn.GELU(),
+    'leaky' : nn.LeakyReLU(0.01, inplace=False),
+    'leaky20' : nn.LeakyReLU(0.2, inplace=False),
     'sig': nn.Sigmoid(),
     'tanh': nn.Tanh(),
     'softmax': nn.Softmax(dim=1),
@@ -38,7 +41,7 @@ activation_functions = {
 # -------------------
 
 class Generator(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, hidden_no=1, ac_func='leaky', aco_func='tanh'):
+    def __init__(self, input_size, hidden_size, output_size, hidden_no=1, ac_func='leaky', aco_func='tanh', dropout=0.0):
         super(Generator, self).__init__()
         self.ac = activation_functions[ac_func]
         self.aco = activation_functions[aco_func]
@@ -48,15 +51,19 @@ class Generator(nn.Module):
             self.hidden.append(nn.Linear(hidden_size, hidden_size))
         self.hidden = nn.ModuleList(self.hidden)
         self.output = nn.Linear(hidden_size, output_size)
+        self.drop = nn.Dropout(p=dropout)
 
         self.apply(weights_init_normal)
 
     def forward(self, x):
         out = self.input(x)
         out = self.ac(out)
+        
         for layer in self.hidden:
             out = layer(out)
+            if self.training: out = self.drop(out)
             out = self.ac(out)
+            
         out = self.output(out)
         out = self.aco(out)
         return out
@@ -67,7 +74,7 @@ class Generator(nn.Module):
 # -------------------    
 
 class Discriminator(nn.Module):
-    def __init__(self, input_size, hidden_size, hidden_no=1, ac_func='leaky', aco_func='sig'):
+    def __init__(self, input_size, hidden_size, hidden_no=1, ac_func='leaky', aco_func='sig', dropout=0.0):
         super(Discriminator, self).__init__()
         self.ac = activation_functions[ac_func]
         self.aco = activation_functions[aco_func]
@@ -77,15 +84,19 @@ class Discriminator(nn.Module):
             self.hidden.append(nn.Linear(hidden_size, hidden_size))
         self.hidden = nn.ModuleList(self.hidden)
         self.output = nn.Linear(hidden_size, 1)
+        self.drop = nn.Dropout(p=dropout)
         
         self.apply(weights_init_normal)
 
     def forward(self, x):
         out = self.input(x)
         out = self.ac(out)
+        
         for layer in self.hidden:
             out = layer(out)
+            if self.training: out = self.drop(out)
             out = self.ac(out)
+            
         out = self.output(out)
         out = self.aco(out)
         return out
@@ -97,7 +108,7 @@ class Discriminator(nn.Module):
 
 class Classifier(nn.Module):
     ''' Gumbel Softmax (Discrete output is default) '''
-    def __init__(self, input_size, hidden_size, num_classes, hidden_no=1, ac_func='relu', aco_func='gumbel', hard=True, tau=1):
+    def __init__(self, input_size, hidden_size, num_classes, hidden_no=1, ac_func='relu', aco_func='gumbel', hard=True, tau=1, dropout=0.0):
         super(Classifier, self).__init__()
         self.ac = activation_functions[ac_func]
         if aco_func == 'gumbel':
@@ -112,20 +123,23 @@ class Classifier(nn.Module):
         self.hidden = nn.ModuleList(self.hidden)
         self.output = nn.Linear(hidden_size, num_classes)
         self.soft = activation_functions['softmax']
+        self.drop = nn.Dropout(p=dropout)
         
         self.apply(weights_init_normal)
         
     def forward(self, x):
         out = self.input(x)
         out = self.ac(out)
+        
         for layer in self.hidden:
             out = layer(out)
+            if self.training: out = self.drop(out)
             out = self.ac(out)
         out = self.output(out)
-        if self.training:
-            out = self.aco(out)
-        else:
-            out = self.soft(out)
+        
+        if self.training: out = self.aco(out)
+        else: out = self.soft(out)
+        
         return out
 
 # -------------------
@@ -179,25 +193,25 @@ def activate_CUDA(*args):
     
 def load_G(P):
     input_size, output_size = P.get_IO_shape()
-    G = Generator(input_size=P.get('noise_shape')+output_size, hidden_size=P.get('G_hidden'), output_size=input_size, hidden_no=P.get('G_hidden_no'), ac_func=P.get('G_ac_func'), aco_func=P.get('G_aco_func'))
+    G = Generator(input_size=P.get('noise_shape')+output_size, hidden_size=P.get('G_hidden'), output_size=input_size, hidden_no=P.get('G_hidden_no'), ac_func=P.get('G_ac_func'), aco_func=P.get('G_aco_func'), dropout=P.get('G_drop'))
     if P.get('CUDA'): return activate_CUDA(G)
     else: return G
     
 def load_D(P):
     input_size, output_size = P.get_IO_shape()
-    D = Discriminator(input_size=input_size+output_size, hidden_size=P.get('D_hidden'), hidden_no=P.get('D_hidden_no'), ac_func=P.get('D_ac_func'), aco_func=P.get('D_aco_func'))
+    D = Discriminator(input_size=input_size+output_size, hidden_size=P.get('D_hidden'), hidden_no=P.get('D_hidden_no'), ac_func=P.get('D_ac_func'), aco_func=P.get('D_aco_func'), dropout=P.get('D_drop'))
     if P.get('CUDA'): return activate_CUDA(D)
     else: return D
     
 def load_C(P):
     input_size, output_size = P.get_IO_shape()
-    C = Classifier(input_size=input_size, hidden_size=P.get('C_hidden'), num_classes=output_size, hidden_no=P.get('C_hidden_no'), ac_func=P.get('C_ac_func'), aco_func=P.get('C_aco_func'), hard=True, tau=P.get('C_tau'))
+    C = Classifier(input_size=input_size, hidden_size=P.get('C_hidden'), num_classes=output_size, hidden_no=P.get('C_hidden_no'), ac_func=P.get('C_ac_func'), aco_func=P.get('C_aco_func'), hard=True, tau=P.get('C_tau'), dropout=P.get('C_drop'))
     if P.get('CUDA'): return activate_CUDA(C)
     else: return C
  
 def load_R(P):
     input_size, output_size = P.get_IO_shape()
-    R = Classifier(input_size=input_size, hidden_size=P.get('R_hidden'), num_classes=output_size, hidden_no=P.get('R_hidden_no'), ac_func=P.get('R_ac_func'), aco_func=P.get('R_aco_func'), hard=True, tau=P.get('R_tau'))
+    R = Classifier(input_size=input_size, hidden_size=P.get('R_hidden'), num_classes=output_size, hidden_no=P.get('R_hidden_no'), ac_func=P.get('R_ac_func'), aco_func=P.get('R_aco_func'), hard=True, tau=P.get('R_tau'), dropout=P.get('R_drop'))
     if P.get('CUDA'): return activate_CUDA(R)
     else: return R   
  
@@ -233,7 +247,7 @@ class CrossEntropyLoss_OneHot(_WeightedLoss):
 def get_optimiser(P,model,params):
     assert model in ['G','D','C']
     optim = P.get(model+'_optim')
-    assert optim in ['Adam','AdamW','SGD']
+    assert optim in ['Adam','AdamW','SGD','AdaBound']
     
     if optim == 'Adam':
         return torch.optim.Adam(params, lr=P.get(model+'LR'), betas=(P.get(model+'B1'), P.get(model+'B2')))
@@ -241,6 +255,8 @@ def get_optimiser(P,model,params):
         return torch.optim.AdamW(params, lr=P.get(model+'LR'), betas=(P.get(model+'B1'), P.get(model+'B2')))
     elif optim == 'SGD':
         return torch.optim.SGD(params, lr=P.get(model+'LR'), momentum=P.get(model+'B1'))
+    elif optim == 'AdaBound':
+        return AdaBoundW(params, lr=P.get(model+'LR'), betas=(P.get(model+'B1'), P.get(model+'B2')))
 
 # -------------------
 #  Clear

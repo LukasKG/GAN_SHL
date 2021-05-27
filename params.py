@@ -165,6 +165,7 @@ DEFAULT_PARAMS = {
         'C_aco_func'      : 'gumbel',                   # Classifier: Type of activation function for the output layer
         'C_tau'           : 1,                          # Classifier: Temperature of gumbel softmax
         'C_optim'         : 'AdamW',                    # Classifier: Optimiser
+        'C_drop'          : 0.0,                        # Classifier: Dropout probability for each hidden layer
         
         'DLR'             : 0.0125,                     # Discriminator: Learning rate
         'DB1'             : 0.75,                       # Discriminator: Decay rate for first moment estimates
@@ -174,6 +175,7 @@ DEFAULT_PARAMS = {
         'D_ac_func'       : 'leaky',                    # Discriminator: Type of activation function for the hidden layers
         'D_aco_func'      : 'sig',                      # Discriminator: Type of activation function for the output layer
         'D_optim'         : 'SGD',                      # Discriminator: Optimiser
+        'D_drop'          : 0.0,                        # Discriminator: Dropout probability for each hidden layer
         
         'GLR'             : 0.0005,                     # Generator: Learning rate
         'GB1'             : 0.5,                        # Generator: Decay rate for first moment estimates
@@ -183,6 +185,7 @@ DEFAULT_PARAMS = {
         'G_ac_func'       : 'leaky',                    # Generator: Type of activation function for the hidden layers
         'G_aco_func'      : 'tanh',                     # Generator: Type of activation function for the output layer    
         'G_optim'         : 'SGD',                      # Generator: Optimiser
+        'G_drop'          : 0.0,                        # Generator: Dropout probability for each hidden layer
         
         'RLR'             : 0.003,                      # Baseline Classifier: Learning rate
         'RB1'             : 0.9,                        # Baseline Classifier: Decay rate for first moment estimates
@@ -193,6 +196,7 @@ DEFAULT_PARAMS = {
         'R_aco_func'      : 'softmax',                  # Baseline Classifier: Type of activation function for the output layer
         'R_tau'           : 1,                          # Baseline Classifier: Temperature of gumbel softmax
         'R_optim'         : 'AdamW',                    # Baseline Classifier: Optimiser
+        'R_drop'          : 0.0,                        # Baseline Classifier: Dropout probability for each hidden layer
         }
 
 class Params:

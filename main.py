@@ -5,6 +5,7 @@ from math import inf as INF
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import confusion_matrix
+from sklearn.model_selection import StratifiedKFold
 import torch
 
 plt.ioff()
@@ -167,15 +168,80 @@ def hyperopt_Search(P,param_space,objective_func,eval_step=5,max_evals=None):
         for key,val in space_eval(param_space, best_param).items():
             P.log(str(key)+': '+str(val),name='hyperopt')
         P.log(f"Best Performance: {abs(min(trials.losses())):.5f} - Copy Params: "+" ".join([key+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val))+',' for key,val in space_eval(param_space, best_param).items()]),name='hyperopt')   
+  
+def hyperopt_GAN_kfold(P,param_space,eval_step=5,max_evals=None,P_val=None):
+    P.set('save_step',INF)
+    P.set('R_active',False)
     
+    V = ds.get_data(P)
+    P.log("Data loaded.")
+    
+    F = pp.perform_preprocessing(P, V, P_val)
+        
+    X, Y = F[0]
+    XV, YV = F[2]
+    DL_V = pp.get_dataloader(P, XV, YV, batch_size=1024) 
+    
+    loaders = []
+    
+    skf = StratifiedKFold(n_splits=P.get('runs'),shuffle=True,random_state=42)
+    for run, (train_index, test_index) in enumerate(skf.split(X, Y)):
+    
+        DL_L = pp.get_dataloader(P, X[test_index], Y[test_index])
+        DL_U_iter = pp.get_perm_dataloader(P, X[train_index], Y[train_index])  
+        loaders.append([ DL_L, DL_U_iter ])
+    
+    DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P,V,P_val)
+    P.log(f"Number of batches: Labelled = {len(DL_L)} | Unlabelled = {len(DL_U_iter)} | Validation = {len(DL_V)}")
+    
+    if P.get('CUDA') and torch.cuda.is_available(): floatTensor = torch.cuda.FloatTensor
+    else: floatTensor = torch.FloatTensor
+
+    def obj(args):
+        P0 = P.copy()
+        P0.update(args)
+        P0.log("Check Params: "+", ".join([str(key)+' = '+ ("'"+val+"'" if isinstance(val,str) else str(val)) for key,val in args.items()]),name='hyperopt') 
+            
+        perf_mat_C = np.empty(shape=(2,P.get('runs'),len(DL_V)))
+        perf_mat_D = np.empty(shape=(3,P.get('runs')))
+        for run, (DL_L, DL_U_iter) in enumerate(loaders):
+            G, D, C, _, _ = GAN.train_GAN(P0, DL_L, DL_U_iter, DL_V, name=P0.get('name')+'_%d'%run)
+            G.eval();D.eval();C.eval();
+            
+            with torch.no_grad():
+                acc_D = np.empty(shape=(2,len(DL_V)))
+                for i,(XV, YV) in enumerate(DL_V):
+                    YC = C(XV)
+                    perf_mat_C[0,run,i] = calc_f1score(YC, YV, average = 'weighted')
+                    perf_mat_C[1,run,i] = calc_accuracy(YC, YV)
+                    acc_D[0,i] = calc_accuracy(D(torch.cat((XV,YV),dim=1)),floatTensor(XV.shape[0],1).fill_(1.0))
+                    acc_D[1,i] = calc_accuracy(D(torch.cat((XV,YC),dim=1)),floatTensor(XV.shape[0],1).fill_(0.0))
+                    
+                YV = floatTensor(pp.get_one_hot_labels(P0,num=P0.get('batch_size'))) 
+                perf_mat_D[0,run] = calc_accuracy(D(torch.cat((G(torch.cat((floatTensor(np.random.normal(0,1,(P0.get('batch_size'),P0.get('noise_shape')))),YV),dim=1)),YV),dim=1)),floatTensor(P0.get('batch_size'),1).fill_(0.0))
+                perf_mat_D[1,run] = np.mean(acc_D[0])
+                perf_mat_D[2,run] = np.mean(acc_D[1])
+              
+        perf = np.mean(perf_mat_C.reshape(2,-1),axis=1)
+        val = (
+            0.15 * np.mean((0.5-perf_mat_D[0])**2)   # G/D acc ideally is around 50%
+            + 0.05 * np.mean((1-perf_mat_D[1])**2)   # D is rewarded for accurately classifying real pairs
+            + 0.05 * np.mean((1-perf_mat_D[2])**2)   # D is rewarded for accurately classifying classifier predictions
+            - perf[0]                               # C F1 score is most important
+            )
+        P0.log(f"loss = {val:.5f} [Accuracy D = {np.mean(perf_mat_D):.5f} | vs G = {np.mean(perf_mat_D[0]):.5f} | vs C = {np.mean(perf_mat_D[2]):.5f} | vs real = {np.mean(perf_mat_D[1]):.5f}] [C - F1: {perf[0]:.5f} | Accuracy: {perf[1]:.5f}]",name='hyperopt')
+        return val
+ 
+    hyperopt_Search(P,param_space,obj,eval_step=eval_step,max_evals=max_evals)
+  
 def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None,P_val=None):
     P.set('save_step',INF)
     P.set('R_active',False)
     
-    F = ds.get_data(P)
+    V = ds.get_data(P)
     P.log("Data loaded.")
     
-    DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P,F,P_val)
+    DL_L, DL_U_iter, DL_V = pp.get_all_dataloader(P,V,P_val)
     P.log(f"Number of batches: Labelled = {len(DL_L)} | Unlabelled = {len(DL_U_iter)} | Validation = {len(DL_V)}")
     
     if P.get('CUDA') and torch.cuda.is_available(): floatTensor = torch.cuda.FloatTensor
@@ -222,10 +288,10 @@ def hyperopt_GAN(P,param_space,eval_step=5,max_evals=None,P_val=None):
 def hyperopt_R(P,param_space,eval_step=5,max_evals=None,P_val=None): 
     P.set('save_step',INF)
 
-    F = ds.get_data(P)
+    V = ds.get_data(P)
     P.log("Data loaded.")
     
-    DL_L, _, DL_V = pp.get_all_dataloader(P,F,P_val)
+    DL_L, _, DL_V = pp.get_all_dataloader(P,V,P_val)
     P.log(f"Number of batches: Labelled = {len(DL_L)} | Validation = {len(DL_V)}")
     
     def obj(args):
@@ -253,10 +319,10 @@ def hyperopt_R(P,param_space,eval_step=5,max_evals=None,P_val=None):
 def hyperopt_GD(P,param_space,eval_step=5,max_evals=None,P_val=None):
     P.set('save_step',INF)
       
-    F = ds.get_data(P)
+    V = ds.get_data(P)
     P.log("Data loaded.")
     
-    DL_L, _, DL_V = pp.get_all_dataloader(P,F,P_val)
+    DL_L, _, DL_V = pp.get_all_dataloader(P,V,P_val)
     P.log(f"Number of batches: Labelled = {len(DL_L)} | Validation = {len(DL_V)}")
     
     if P.get('CUDA') and torch.cuda.is_available(): floatTensor = torch.cuda.FloatTensor
@@ -282,8 +348,94 @@ def hyperopt_GD(P,param_space,eval_step=5,max_evals=None,P_val=None):
  
     hyperopt_Search(P,param_space,obj,eval_step=eval_step,max_evals=max_evals)
     
-      
-def get_Results(P,P_val=None,V=None):
+def get_results_kfold(P,P_val=None,V=None):
+    P.log("Params: "+str(P))
+    
+    ACC = load_results(P,name='acc')
+    F1S = load_results(P,name='f1')
+    YF = load_results(P,name='YF')
+    RF = load_results(P,name='RF')
+    PF = load_results(P,name='PF')
+    
+    if any(mat is None for mat in (ACC,F1S,YF,PF)):
+    
+        if P.get('CUDA') and torch.cuda.is_available():
+            P.log("CUDA Training.")
+        else:
+            P.log("CPU Training.")
+        
+        F = pp.perform_preprocessing(P, ds.get_data(P,V), P_val)
+        
+        X, Y = F[0]
+        XV, YV = F[2]
+        DL_V = pp.get_dataloader(P, XV, YV, batch_size=1024) 
+        
+        ACC = None
+        F1S = None
+        YF = None
+        RF = None
+        PF = None
+        
+        # -------------------
+        #  Individual runs
+        # -------------------
+        skf = StratifiedKFold(n_splits=P.get('runs'),shuffle=True,random_state=42)
+        for run, (train_index, test_index) in enumerate(skf.split(X, Y)):
+        
+            DL_L = pp.get_dataloader(P, X[test_index], Y[test_index])
+            DL_U_iter = pp.get_perm_dataloader(P, X[train_index], Y[train_index])    
+            P.log(f"Number of batches: Labelled = {len(DL_L)} | Unlabelled = {len(DL_U_iter)} | Validation = {len(DL_V)}")
+            
+            G, D, C, mat_accuracy, mat_f1_score = GAN.train_GAN(P, DL_L, DL_U_iter, DL_V, name=P.get('name')+'_%d'%run)
+            
+            if P.get('R_active'):
+                R, acc_BASE, f1_BASE = GAN.train_Base(P, DL_L, DL_V, name=P.get('name')+'_%d'%run)
+                mat_accuracy = np.concatenate((mat_accuracy,acc_BASE))
+                mat_f1_score = np.concatenate((mat_f1_score,f1_BASE))
+            if ACC is None:
+                ACC = np.expand_dims(mat_accuracy,axis=2)
+                F1S = np.expand_dims(mat_f1_score,axis=2)
+            else:
+                ACC = np.concatenate((ACC, np.expand_dims(mat_accuracy,axis=2)),axis=2)
+                F1S = np.concatenate((F1S, np.expand_dims(mat_accuracy,axis=2)),axis=2)
+                
+            C.eval()
+            if P.get('R_active'):
+                R.eval()
+                
+            with torch.no_grad():
+                for XV, YV in DL_V:
+                    
+                    # Classify Validation data
+                    PC = C(XV)
+                    
+                    if YF == None:
+                        YF = YV
+                        PF = PC
+                    else:
+                        YF = torch.cat((YF, YV), 0)
+                        PF = torch.cat((PF, PC), 0)
+                        
+                    if P.get('R_active'):
+                        if RF == None:
+                            RF = R(XV)
+                        else:
+                            RF = torch.cat((RF, R(XV).detach()), 0)
+        
+
+        save_results(P, ACC, name='acc')
+        save_results(P, F1S, name='f1')
+        save_results(P,YF,name='YF')
+        save_results(P,PF,name='PF')
+        if RF is not None:
+            save_results(P, RF, name='RF')
+        P.log("Saved Accuracy, F1 Score and predictions.")
+    else:
+        P.log("Loaded Accuracy, F1 Score and predictions.")
+           
+    return ACC, F1S, (YF, RF, PF)
+     
+def get_results(P,P_val=None,V=None):
     P.log("Params: "+str(P))
     
     ACC = load_results(P,name='acc')
@@ -333,7 +485,6 @@ def get_Results(P,P_val=None,V=None):
                 
             with torch.no_grad():
                 for XV, YV in DL_V:
-                    
                     # Classify Validation data
                     PC = C(XV)
                     
@@ -362,9 +513,14 @@ def get_Results(P,P_val=None,V=None):
         
     return ACC, F1S, (YF, RF, PF)
 
+def evaluate_kfold(P,P_val=None,epoch_lst=None,Y_max = 1.05,V=None):
+    #P.set('R_active',True)
+    ACC, F1S, (YF, RF, PF) = get_results_kfold(P,P_val,V)
+    plot_evaluation(P, ACC, F1S, YF, PF, RF, epoch_lst, Y_max)
+
 def evaluate(P,P_val=None,epoch_lst=None,Y_max = 1.05,V=None):
     #P.set('R_active',True)
-    ACC, F1S, (YF, RF, PF) = get_Results(P,P_val,V)
+    ACC, F1S, (YF, RF, PF) = get_results(P,P_val,V)
     plot_evaluation(P, ACC, F1S, YF, PF, RF, epoch_lst, Y_max)
 
 def plot_evaluation(P, ACC, F1S, YF, PF, RF=None, epoch_lst=None, Y_max = 1.05):
@@ -521,14 +677,13 @@ def mrmr(K=908,log=True,dataset='SHL_ext'):
 #  Hyperopt GAN Search
 # -------------------
 
-def hyper_GAN_3_5(P_args):
+def hyper_GAN_3_6(P_args):
     P_search = P_args.copy()
     P_search.set_keys(
-        name = 'Hyper_GAN_3.5',
+        name = 'Hyper_GAN_3.6',
         dataset = 'SHL_ext',
         
-        epochs = 100,
-        runs = 5,
+        runs = 10,
         
         batch_size = 512,
         FX_num = 150,
@@ -536,28 +691,27 @@ def hyper_GAN_3_5(P_args):
         FX_sel = 'all',
         cross_val = 'combined',
         
-        sample_no = 512,
+        sample_no = 11136,
         undersampling = False,
         oversampling = False,
         
         C_aco_func = 'gumbel',
-        
-        D_optim = 'SGD', 
-
-        G_optim = 'SGD',
-        
         ) 
     
+    ac_funcs = ['relu','selu','gelu','leaky','leaky20','sig']
+    optims = ['AdamW','SGD','AdaBound']
+    
     param_space={
+        'epochs'          : scope.int(hp.qloguniform('epochs', np.log(5), np.log(10), q=1)),
         'GD_ratio'        : hp.uniform('GD_ratio', 0, 0.9),
         
         'CLR'             : hp.loguniform('CLR', np.log(0.00001), np.log(0.1)),
         'CB1'             : hp.loguniform('CB1', np.log(0.001), np.log(0.99)),
         
-        'C_ac_func'       : hp.choice('C_ac_func',['relu','leaky','leaky20','sig']),
+        'C_ac_func'       : hp.choice('C_ac_func',ac_funcs),
         'C_hidden'        : scope.int(hp.qloguniform('C_hidden', np.log(16), np.log(4096), q=1)),
         'C_hidden_no'     : scope.int(hp.quniform('C_hidden_no', 1, 8, q=1)), 
-        'C_optim'         : hp.choice('C_optim',['AdamW','SGD']),
+        'C_optim'         : hp.choice('C_optim',optims),
         'C_tau'           : hp.loguniform('C_tau', np.log(0.01), np.log(10.)),
         
         'GLR'             : hp.loguniform('GLR', np.log(0.00001), np.log(0.1)),
@@ -565,16 +719,18 @@ def hyper_GAN_3_5(P_args):
         'DLR'             : hp.loguniform('DLR', np.log(0.00001), np.log(0.1)),
         'DB1'             : hp.loguniform('DB1', np.log(0.001), np.log(0.99)),
 
-        'G_ac_func'       : hp.choice('G_ac_func',['relu','leaky','leaky20','sig']),
+        'G_ac_func'       : hp.choice('G_ac_func',ac_funcs),
         'G_hidden'        : scope.int(hp.qloguniform('G_hidden', np.log(16), np.log(4096), q=1)),
-        'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 1, 8, q=1)), 
+        'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 1, 8, q=1)),
+        'G_optim'         : hp.choice('G_optim',optims),
         
-        'D_ac_func'       : hp.choice('D_ac_func',['relu','leaky','leaky20','sig']),
+        'D_ac_func'       : hp.choice('D_ac_func',ac_funcs),
         'D_hidden'        : scope.int(hp.qloguniform('D_hidden', np.log(16), np.log(4096), q=1)),
-        'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 1, 8, q=1)), 
-    }   
+        'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 1, 8, q=1)),
+        'D_optim'         : hp.choice('D_optim',optims),
+    }
     
-    hyperopt_GAN(P_search,param_space,eval_step=5,max_evals=None,P_val=P_search.copy().set_keys(
+    hyperopt_GAN_kfold(P_search,param_space,eval_step=5,max_evals=None,P_val=P_search.copy().set_keys(
         sample_no = None,
         undersampling = False,
         oversampling = False,))
@@ -691,6 +847,10 @@ def main():
     parser.add_argument('-eval_r', dest='BASE', action='store_true')
     parser.add_argument('-eval_c', dest='BASE', action='store_true')
     parser.set_defaults(BASE=False)
+    
+    parser.add_argument('-eval_k', dest='EVAL_K', action='store_true')
+    parser.add_argument('-eval_kfold', dest='EVAL_K', action='store_true')
+    parser.set_defaults(EVAL_K=False)
     
     parser.add_argument('-search', dest='SEARCH', action='store_true')
     parser.set_defaults(SEARCH=False)
@@ -958,6 +1118,9 @@ def main():
         #                 )
         #            evaluate(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
 
+    if args.EVAL_K: 
+        evaluate_kfold(P,P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ), epoch_lst = range(50,P.get('epochs'),50))
+    
     if args.BASE:
         P_base1 = P.copy().set_keys( name='eval_c_normal', dataset='SHL', epochs=1500, sample_no=400, undersampling=False, oversampling=False, )
         P_base2 = P.copy().set_keys( name='eval_c_extended', dataset='SHL_ext', epochs=200, sample_no=None, undersampling=True, oversampling=False, )
@@ -982,7 +1145,7 @@ def main():
         plt_FX_num(P_fx_num,max_n=args.FX_NUM,P_val=P_fx_num.copy().set_keys(sample_no=None, undersampling=False, oversampling=False,),indeces=indeces)
 
     if args.SEARCH:
-        hyper_GAN_3_5(P_args)
+        hyper_GAN_3_6(P_args)
     
     if args.SEARCH_C:
         hyper_R_1_3(P_args)

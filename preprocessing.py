@@ -91,7 +91,8 @@ def perform_preprocessing(P_train, datasets, P_val=None):
     
     ''' Perform standardization '''
     #scaler = preprocessing.StandardScaler(copy=False)
-    scaler = preprocessing.RobustScaler(copy=False)
+    #scaler = preprocessing.RobustScaler(copy=False)
+    scaler = preprocessing.QuantileTransformer(n_quantiles=1000, output_distribution='uniform', ignore_implicit_zeros=False, subsample=100000, random_state=42, copy=False)
     X_full = scaler.fit_transform(X_full)
     
     ''' Perform principle component analysis '''
