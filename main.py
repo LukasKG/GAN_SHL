@@ -21,7 +21,7 @@ if __package__ is None or __package__ == '':
     import GAN
     from metrics import calc_accuracy, calc_f1score
     from network import clear_cache, save_results, load_results
-    from sklearn_functions import sklearn_baseline, plt_FX_num
+    from sklearn_functions import sklearn_baseline, sklearn_kfolds, plt_FX_num
     from params import Params, save_fig, save_trials, load_trials
     from plot_confusion_matrix import plot_confusion_matrix
     import preprocessing as pp
@@ -30,6 +30,7 @@ else:
     from . import GAN
     from .metrics import calc_accuracy, calc_f1score
     from .network import clear_cache, save_results, load_results
+    from .sklearn_functions import sklearn_baseline, sklearn_kfolds, plt_FX_num
     from .params import Params, save_fig, save_trials, load_trials
     from .plot_confusion_matrix import plot_confusion_matrix
     from . import preprocessing as pp
@@ -713,6 +714,7 @@ def hyper_GAN_3_6(P_args):
         'C_hidden_no'     : scope.int(hp.quniform('C_hidden_no', 1, 8, q=1)), 
         'C_optim'         : hp.choice('C_optim',optims),
         'C_tau'           : hp.loguniform('C_tau', np.log(0.01), np.log(10.)),
+        'C_drop'          : hp.uniform('C_drop', 0, 0.75),
         
         'GLR'             : hp.loguniform('GLR', np.log(0.00001), np.log(0.1)),
         'GB1'             : hp.loguniform('GB1', np.log(0.001), np.log(0.99)),
@@ -723,11 +725,13 @@ def hyper_GAN_3_6(P_args):
         'G_hidden'        : scope.int(hp.qloguniform('G_hidden', np.log(16), np.log(4096), q=1)),
         'G_hidden_no'     : scope.int(hp.quniform('G_hidden_no', 1, 8, q=1)),
         'G_optim'         : hp.choice('G_optim',optims),
+        'G_drop'          : hp.uniform('G_drop', 0, 0.75),
         
         'D_ac_func'       : hp.choice('D_ac_func',ac_funcs),
         'D_hidden'        : scope.int(hp.qloguniform('D_hidden', np.log(16), np.log(4096), q=1)),
         'D_hidden_no'     : scope.int(hp.quniform('D_hidden_no', 1, 8, q=1)),
         'D_optim'         : hp.choice('D_optim',optims),
+        'D_drop'          : hp.uniform('D_drop', 0, 0.75),
     }
     
     hyperopt_GAN_kfold(P_search,param_space,eval_step=5,max_evals=None,P_val=P_search.copy().set_keys(
@@ -945,7 +949,7 @@ def main():
         
         FX_sel = 'all',
         R_active = False,
-        cross_val = 'user1',
+        cross_val = 'combined',
         
         sample_no = None,
         undersampling = False,
@@ -1134,11 +1138,30 @@ def main():
         selected, indeces = mrmr(dataset='SHL_ext')
         
     if args.SKLEARN:
-        P_sklearn = P.copy().set_keys(
-            name = 'eval_sklearn',
-            runs = 10,
-            )
-        sklearn_baseline(P_sklearn)
+        
+        V = ds.load_data(P)
+        
+        samples_sizes = [512,1024,4096,11136]
+        
+        for sample_no in samples_sizes: 
+            P.set_keys(name='sklearn_combined', cross_val='combined', sample_no = sample_no, undersampling = False, oversampling = False, )
+            P.log("")
+            P.log("#########")
+            P.log(f"Sample Size: {sample_no}")
+            P.log("#########")
+            sklearn_baseline(P,V)
+        
+        for sample_no in samples_sizes:        
+            P.set_keys(name='sklearn_user1', cross_val='user1', sample_no = sample_no, undersampling = False, oversampling = False, )
+            P.log("")
+            P.log("#########")
+            P.log(f"Sample Size: {sample_no}")
+            P.log("#########")
+            sklearn_baseline(P,V)
+
+        P.set_keys(name='sklearn_independent', cross_val='combined', sample_no = 11136, undersampling = False, oversampling = False, )
+        sklearn_kfolds(P,V)
+
         
     if args.FX_NUM is not None:
         P_fx_num = P.copy().set_keys( name='fx_num', dataset='SHL_ext', runs=8, sample_no=512, undersampling=False, oversampling=False, )

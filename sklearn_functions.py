@@ -3,11 +3,15 @@ from joblib import Parallel, delayed
 import matplotlib.pyplot as plt
 import numpy as np
 
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import AdaBoostClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neural_network import MLPClassifier as MLP
 from sklearn.svm import SVC
+
+from sklearn.model_selection import StratifiedKFold
 
 if __package__ is None or __package__ == '':
     import data_source as ds
@@ -17,6 +21,160 @@ else:
     from . import data_source as ds
     from .params import Params, save_fig
     from . import preprocessing as pp
+
+
+def sklearn_kfolds(P,V=None):
+    P.log(P)
+        
+    F = pp.perform_preprocessing(P, ds.get_data(P,V), P.copy().set_keys( sample_no = None, undersampling = False, oversampling = False, ))
+    
+        
+    X, Y = F[0]
+    x_test, y_test = F[2]
+    
+    skf = StratifiedKFold(n_splits=P.get('runs'),shuffle=True,random_state=42)
+    
+    # ''' Multi-layer Perceptron '''
+    # res = np.empty(shape=(P.get('runs'),5))
+    # for run, (train_index, test_index) in enumerate(skf.split(X, Y)):
+    #     x_train, y_train = X[test_index], Y[test_index].ravel()
+        
+    #     clf = MLP(hidden_layer_sizes=(100,100),max_iter=500)
+    #     clf.fit(x_train, y_train)
+
+    #     y_pred = clf.predict(x_train) 
+
+    #     res[run,0] = accuracy_score(y_train,y_pred)
+    #     res[run,1] = f1_score(y_train,y_pred,average='macro')
+        
+    #     y_pred = clf.predict(x_test)
+    #     res[run,2] = accuracy_score(y_test,y_pred)
+    #     res[run,3] = f1_score(y_test,y_pred,average='macro')
+    #     res[run,4] = clf.n_iter_
+        
+    # res = np.mean(res,axis=0)
+    
+    # P.log("")
+    # P.log(f"MLP Acc Train: {res[0]:.5f}")
+    # P.log(f"MLP  F1 Train: {res[1]:.5f}")
+
+    # P.log("")
+    # P.log(f"MLP Acc  Test: {res[2]:.5f}")
+    # P.log(f"MLP  F1  Test: {res[3]:.5f}")
+    # P.log(F"MLP Iterations = {res[4]}")
+    
+    
+    ''' AdaBoost '''
+    res = np.empty(shape=(P.get('runs'),4))
+    for run, (train_index, test_index) in enumerate(skf.split(X, Y)):
+        x_train, y_train = X[test_index], Y[test_index].ravel()
+        
+        base = DecisionTreeClassifier(max_depth=10)
+        
+        clf = AdaBoostClassifier(base_estimator=base, n_estimators=100, learning_rate=0.5, random_state=42)
+        clf.fit(x_train, y_train)
+
+        y_pred = np.round(clf.predict(x_train))
+
+        res[run,0] = accuracy_score(y_train,y_pred)
+        res[run,1] = f1_score(y_train,y_pred,average='macro')
+        
+        y_pred = np.round(clf.predict(x_test))
+        res[run,2] = accuracy_score(y_test,y_pred)
+        res[run,3] = f1_score(y_test,y_pred,average='macro')
+        
+    res = np.mean(res,axis=0)
+    
+    P.log("")
+    P.log(f"Ada Acc Train: {res[0]:.5f}")
+    P.log(f"Ada  F1 Train: {res[1]:.5f}")
+    
+    #P.log("")
+    P.log(f"Ada Acc  Test: {res[2]:.5f}")
+    P.log(f"Ada  F1  Test: {res[3]:.5f}")
+
+    
+
+    ''' Random Forest Classifier '''
+    res = np.empty(shape=(P.get('runs'),4))
+    for run, (train_index, test_index) in enumerate(skf.split(X, Y)):
+        x_train, y_train = X[test_index], Y[test_index].ravel()
+        
+        clf = RandomForestClassifier()
+        clf.fit(x_train, y_train)
+
+        y_pred = clf.predict(x_train) 
+        res[run,0] = accuracy_score(y_train,y_pred)
+        res[run,1] = f1_score(y_train,y_pred,average='macro')
+        
+        y_pred = clf.predict(x_test)
+        res[run,2] = accuracy_score(y_test,y_pred)
+        res[run,3] = f1_score(y_test,y_pred,average='macro')
+        
+    res = np.mean(res,axis=0)
+       
+    P.log("")
+    P.log(f"RFC Acc Train: {res[0]:.5f}")
+    P.log(f"RFC  F1 Train: {res[1]:.5f}")
+    
+    P.log("")
+    P.log(f"RFC Acc  Test: {res[2]:.5f}")
+    P.log(f"RFC  F1  Test: {res[3]:.5f}")
+
+    
+    ''' Gaussian Naive Bayes '''
+    res = np.empty(shape=(P.get('runs'),4))
+    for run, (train_index, test_index) in enumerate(skf.split(X, Y)):
+        x_train, y_train = X[test_index], Y[test_index].ravel()
+        
+        clf = GaussianNB()
+        clf.fit(x_train, y_train)
+
+        y_pred = clf.predict(x_train) 
+        res[run,0] = accuracy_score(y_train,y_pred)
+        res[run,1] = f1_score(y_train,y_pred,average='macro')
+        
+        y_pred = clf.predict(x_test)
+        res[run,2] = accuracy_score(y_test,y_pred)
+        res[run,3] = f1_score(y_test,y_pred,average='macro')
+        
+    res = np.mean(res,axis=0)
+    
+    P.log("")
+    P.log(f"GNB Acc Train: {res[0]:.5f}")
+    P.log(f"GNB  F1 Train: {res[1]:.5f}")
+    
+    #P.log("")
+    P.log(f"GNB Acc  Test: {res[2]:.5f}")
+    P.log(f"GNB  F1  Test: {res[3]:.5f}")
+
+
+    ''' Support Vector Classification '''
+    res = np.empty(shape=(P.get('runs'),4))
+    for run, (train_index, test_index) in enumerate(skf.split(X, Y)):
+        print(f"SVC run {run}")
+        x_train, y_train = X[test_index], Y[test_index].ravel()
+        
+        clf = SVC(C=0.001,kernel='poly')
+        clf.fit(x_train, y_train)
+
+        y_pred = clf.predict(x_train) 
+        res[run,0] = accuracy_score(y_train,y_pred)
+        res[run,1] = f1_score(y_train,y_pred,average='macro')
+        
+        y_pred = clf.predict(x_test)
+        res[run,2] = accuracy_score(y_test,y_pred)
+        res[run,3] = f1_score(y_test,y_pred,average='macro')
+        
+    res = np.mean(res,axis=0)
+       
+    P.log("")
+    P.log(f"SVC Acc Train: {res[0]:.5f}")
+    P.log(f"SVC  F1 Train: {res[1]:.5f}")
+
+    #P.log("")
+    P.log(f"SVC Acc  Test: {res[2]:.5f}")
+    P.log(f"SVC  F1  Test: {res[3]:.5f}")
 
 
 def sklearn_baseline(P,V=None):
@@ -49,13 +207,40 @@ def sklearn_baseline(P,V=None):
         
     # res = np.mean(res,axis=0)
         
-    # P.log(f"MLP Acc Train: {res[0]:.2f}")
-    # P.log(f"MLP  F1 Train: {res[1]:.2f}")
+    # P.log(f"MLP Acc Train: {res[0]:.5f}")
+    # P.log(f"MLP  F1 Train: {res[1]:.5f}")
 
-    # P.log(f"MLP Acc  Test: {res[2]:.2f}")
-    # P.log(f"MLP  F1  Test: {res[3]:.2f}")
+    # P.log(f"MLP Acc  Test: {res[2]:.5f}")
+    # P.log(f"MLP  F1  Test: {res[3]:.5f}")
     # P.log(F"MLP Iterations = {res[4]}")
     
+    
+    ''' AdaBoost '''
+    res = np.empty(shape=(P.get('runs'),4))
+    for run in range(P.get('runs')):
+        base = DecisionTreeClassifier(max_depth=10)
+        
+        clf = AdaBoostClassifier(base_estimator=base, n_estimators=100, learning_rate=0.5, random_state=42)
+        clf.fit(x_train, y_train)
+
+        y_pred = np.round(clf.predict(x_train))
+
+        res[run,0] = accuracy_score(y_train,y_pred)
+        res[run,1] = f1_score(y_train,y_pred,average='macro')
+        
+        y_pred = np.round(clf.predict(x_test))
+        res[run,2] = accuracy_score(y_test,y_pred)
+        res[run,3] = f1_score(y_test,y_pred,average='macro')
+        
+    res = np.mean(res,axis=0)
+    
+    P.log("")
+    P.log(f"Ada Acc Train: {res[0]:.5f}")
+    P.log(f"Ada  F1 Train: {res[1]:.5f}")
+    
+    #P.log("")
+    P.log(f"Ada Acc  Test: {res[2]:.5f}")
+    P.log(f"Ada  F1  Test: {res[3]:.5f}")
     
     ''' Random Forest Classifier '''
     res = np.empty(shape=(P.get('runs'),4))
@@ -77,7 +262,7 @@ def sklearn_baseline(P,V=None):
     P.log(f"RFC Acc Train: {res[0]:.5f}")
     P.log(f"RFC  F1 Train: {res[1]:.5f}")
     
-    P.log("")
+    #P.log("")
     P.log(f"RFC Acc  Test: {res[2]:.5f}")
     P.log(f"RFC  F1  Test: {res[3]:.5f}")
 
@@ -102,32 +287,34 @@ def sklearn_baseline(P,V=None):
     P.log(f"GNB Acc Train: {res[0]:.5f}")
     P.log(f"GNB  F1 Train: {res[1]:.5f}")
     
-    P.log("")
+    #P.log("")
     P.log(f"GNB Acc  Test: {res[2]:.5f}")
     P.log(f"GNB  F1  Test: {res[3]:.5f}")
     
     
-    # ''' Support Vector Classification '''
-    # res = np.empty(shape=(P.get('runs'),4))
-    # for run in range(P.get('runs')):
-    #     clf = SVC()
-    #     clf.fit(x_train, y_train)
+    ''' Support Vector Classification '''
+    res = np.empty(shape=(P.get('runs'),4))
+    for run in range(P.get('runs')):
+        clf = SVC(C=0.001,kernel='poly')
+        clf.fit(x_train, y_train)
 
-    #     y_pred = clf.predict(x_train) 
-    #     res[run,0] = accuracy_score(y_train,y_pred)
-    #     res[run,1] = f1_score(y_train,y_pred,average='macro')
+        y_pred = clf.predict(x_train) 
+        res[run,0] = accuracy_score(y_train,y_pred)
+        res[run,1] = f1_score(y_train,y_pred,average='macro')
         
-    #     y_pred = clf.predict(x_test)
-    #     res[run,2] = accuracy_score(y_test,y_pred)
-    #     res[run,3] = f1_score(y_test,y_pred,average='macro')
+        y_pred = clf.predict(x_test)
+        res[run,2] = accuracy_score(y_test,y_pred)
+        res[run,3] = f1_score(y_test,y_pred,average='macro')
         
-    # res = np.mean(res,axis=0)
-        
-    # P.log(f"SVC Acc Train: {res[0]:.2f}")
-    # P.log(f"SVC  F1 Train: {res[1]:.2f}")
-
-    # P.log(f"SVC Acc  Test: {res[2]:.2f}")
-    # P.log(f"SVC  F1  Test: {res[3]:.2f}")
+    res = np.mean(res,axis=0)
+    
+    P.log("")
+    P.log(f"SVC Acc Train: {res[0]:.5f}")
+    P.log(f"SVC  F1 Train: {res[1]:.5f}")
+    
+    #P.log("")
+    P.log(f"SVC Acc  Test: {res[2]:.5f}")
+    P.log(f"SVC  F1  Test: {res[3]:.5f}")
 
 
 def plt_FX_num(P,max_n=908,P_val=None,indeces=None):
@@ -187,6 +374,7 @@ def plt_FX_num(P,max_n=908,P_val=None,indeces=None):
     save_fig(P,'eval_fx_num_iterations',fig)
     
 if __name__ == "__main__":
-    fx_num = 5
+
     P_fx_num = Params( name='fx_num', dataset='SHL_ext', sample_no=512, undersampling=False, oversampling=False, )
-    plt_FX_num(P_fx_num,max_n=fx_num,P_val=P_fx_num.copy().set_keys(sample_no=None, undersampling=False, oversampling=False,))
+    #plt_FX_num(P_fx_num,max_n=fx_num,P_val=P_fx_num.copy().set_keys(sample_no=None, undersampling=False, oversampling=False,))
+    sklearn_kfolds(P_fx_num,V=None)
