@@ -381,15 +381,23 @@ if __name__ == "__main__":
     #labels = [1,2,3]
     
     magnitude = True
-    #magnitude = False
+    magnitude = False
     
     P = Params(data_path=args.data_path,dataset=dataset,labels=labels,FX_sel=FX_sel,magnitude=magnitude,cross_val=cross_val)
     
-    F = get_data(P)
+    V = load_data(P)
     
-    for i,(X,Y) in enumerate(F):
+    for i,(X,Y) in enumerate(V):
         print("#--------------#")
         print("User",i+1)
         print("Windows:",X.shape)
         print("Labels:",{int(k):v for k,v in zip(*np.unique(Y, return_counts=True))})
+    
+    F = get_data(P,V)
+    
+#     for i,(X,Y) in enumerate(F):
+#         print("#--------------#")
+#         print("User",i+1)
+#         print("Windows:",X.shape)
+#         print("Labels:",{int(k):v for k,v in zip(*np.unique(Y, return_counts=True))})
         

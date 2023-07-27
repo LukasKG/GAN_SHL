@@ -110,7 +110,7 @@ DEFAULT_PARAMS = {
         'log_name'        : 'log',                      # Name of the logfile
         'dummy_size'      : 100000,                     # Length of the dummy signal (only for dataset 'Short')
         'noise'           : 0.0,                        # Standard deviation of gaussian noise added to the signals
-        'data_path'       : 'D:/data',                  # Path to the datasets
+        'data_path'       : '/media/lgunthermann/HDD/data',                  # Path to the datasets
         'CUDA'            : True,                       # True: utilises CUDA if available
         
         'dataset'         : "SHL_ext",                  # Name of the dataset to be used
